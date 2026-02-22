@@ -393,14 +393,36 @@ def _init_dtl_camera(
             "clips_saved": len(dtl_recorder.clips) if dtl_recorder else 0,
         })
 
+    def on_dtl_clip_saved(clip: "SavedClip"):
+        """Called from background thread when clip save completes with real metadata."""
+        session_logger = get_session_logger()
+        if session_logger:
+            session_logger.log_dtl_clip(
+                shot_number=clip.shot_number,
+                clip_path=str(clip.path),
+                trigger_time=clip.trigger_time,
+                pre_seconds=clip.pre_seconds,
+                post_seconds=clip.post_seconds,
+                resolution=clip.resolution,
+                framerate=clip.framerate,
+                file_size_bytes=clip.file_size_bytes,
+            )
+        socketio.emit("dtl_clip_saved", {
+            "shot_number": clip.shot_number,
+            "clip_path": str(clip.path),
+            "file_size_bytes": clip.file_size_bytes,
+        })
+
     try:
         if mock:
             dtl_recorder = MockDTLCameraRecorder(
-                config=config, clip_dir=clip_dir, status_callback=on_dtl_status,
+                config=config, clip_dir=clip_dir,
+                status_callback=on_dtl_status, clip_callback=on_dtl_clip_saved,
             )
         else:
             dtl_recorder = DTLCameraRecorder(
-                config=config, clip_dir=clip_dir, status_callback=on_dtl_status,
+                config=config, clip_dir=clip_dir,
+                status_callback=on_dtl_status, clip_callback=on_dtl_clip_saved,
             )
         dtl_recorder.start()
         dtl_enabled = True
@@ -752,31 +774,11 @@ def on_shot_detected(shot: Shot):
         print(f"[WARN] Camera processing error: {e}")
         camera_data = None
 
-    # Trigger DTL camera clip save
-    dtl_clip_data = None
+    # Trigger DTL camera clip save (logging happens via clip_callback)
     try:
         if dtl_recorder and dtl_enabled and dtl_recorder.is_running:
             clip = dtl_recorder.on_shot(shot)
             if clip:
-                dtl_clip_data = {
-                    "clip_path": str(clip.path),
-                    "shot_number": clip.shot_number,
-                    "pre_seconds": clip.pre_seconds,
-                    "post_seconds": clip.post_seconds,
-                }
-                # Log to session logger
-                session_logger = get_session_logger()
-                if session_logger:
-                    session_logger.log_dtl_clip(
-                        shot_number=clip.shot_number,
-                        clip_path=str(clip.path),
-                        trigger_time=clip.trigger_time,
-                        pre_seconds=clip.pre_seconds,
-                        post_seconds=clip.post_seconds,
-                        resolution=clip.resolution,
-                        framerate=clip.framerate,
-                        file_size_bytes=clip.file_size_bytes,
-                    )
                 print(f"[DTL] Saving clip for shot #{clip.shot_number}: {clip.path.name}")
     except Exception as e:
         print(f"[WARN] DTL camera error: {e}")

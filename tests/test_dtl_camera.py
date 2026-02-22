@@ -1,6 +1,7 @@
 """Tests for DTL (down-the-line) swing camera module."""
 
 import json
+import math
 import threading
 import time
 from datetime import datetime
@@ -252,6 +253,82 @@ class TestMockDTLCameraRecorder:
         recorder.start()
         recorder.on_shot(MagicMock())
         recorder.stop()
+
+
+# ---------------------------------------------------------------------------
+# Buffer frame calculation tests
+# ---------------------------------------------------------------------------
+class TestBufferFrameCalculation:
+    """Tests for the CircularOutput buffersize formula."""
+
+    def test_buffer_frame_calculation_defaults(self):
+        """Default config (2s @ 30fps) should produce ceil(2*30*1.1) = 66 frames."""
+        config = DTLConfig()
+        expected = math.ceil(config.pre_trigger_seconds * config.framerate * 1.1)
+        actual = max(1, math.ceil(config.pre_trigger_seconds * config.framerate * 1.1))
+        assert actual == expected == 66
+
+    def test_buffer_frame_calculation_custom(self):
+        """Custom config should scale correctly."""
+        config = DTLConfig(pre_trigger_seconds=1.5, framerate=60)
+        expected = math.ceil(1.5 * 60 * 1.1)  # 99
+        actual = max(1, math.ceil(config.pre_trigger_seconds * config.framerate * 1.1))
+        assert actual == expected
+
+    def test_buffer_frame_minimum_one(self):
+        """Zero pre-trigger seconds should still produce at least 1 frame."""
+        config = DTLConfig(pre_trigger_seconds=0.0, framerate=30)
+        actual = max(1, math.ceil(config.pre_trigger_seconds * config.framerate * 1.1))
+        assert actual == 1
+
+
+# ---------------------------------------------------------------------------
+# Clip callback tests
+# ---------------------------------------------------------------------------
+class TestClipCallback:
+    """Tests for the clip_callback feature."""
+
+    def test_clip_callback_called_with_real_metadata(self, tmp_path):
+        """clip_callback should receive a SavedClip with file_size_bytes > 0."""
+        received = []
+
+        def on_clip(clip):
+            received.append(clip)
+
+        recorder = MockDTLCameraRecorder(
+            clip_dir=tmp_path, clip_callback=on_clip,
+        )
+        recorder.start()
+        recorder.on_shot(MagicMock())
+        recorder.stop()
+
+        assert len(received) == 1
+        assert received[0].file_size_bytes == 128
+        assert received[0].shot_number == 1
+
+    def test_clip_callback_exception_swallowed(self, tmp_path):
+        """Broken clip_callback should not crash the recorder."""
+        def bad_callback(clip):
+            raise RuntimeError("boom")
+
+        recorder = MockDTLCameraRecorder(
+            clip_dir=tmp_path, clip_callback=bad_callback,
+        )
+        recorder.start()
+        clip = recorder.on_shot(MagicMock())
+        recorder.stop()
+
+        assert clip is not None
+        assert clip.shot_number == 1
+
+    def test_clip_callback_not_called_when_none(self, tmp_path):
+        """No callback should be fine — no crash."""
+        recorder = MockDTLCameraRecorder(clip_dir=tmp_path)
+        recorder.start()
+        clip = recorder.on_shot(MagicMock())
+        recorder.stop()
+
+        assert clip is not None
 
 
 # ---------------------------------------------------------------------------

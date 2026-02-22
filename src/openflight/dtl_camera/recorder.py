@@ -5,10 +5,11 @@ Uses picamera2's built-in CircularOutput for an efficient H.264 ring buffer,
 avoiding manual frame management. On shot detection, the buffer is flushed
 to disk and recording continues for a configurable post-impact duration.
 
-Hardware: Raspberry Pi HQ Camera (IMX477, 12MP) on CSI-0, 6mm CS-mount lens.
+Hardware: Raspberry Pi Camera Module v3 Wide (IMX708) on CSI-0.
 """
 
 import logging
+import math
 import threading
 import time
 from dataclasses import dataclass
@@ -20,7 +21,7 @@ from typing import Callable, Optional
 try:
     from picamera2 import Picamera2
     from picamera2.encoders import H264Encoder, Quality
-    from picamera2.outputs import CircularOutput, FileOutput
+    from picamera2.outputs import CircularOutput
 
     PICAMERA2_AVAILABLE = True
 except ImportError:
@@ -42,7 +43,7 @@ class DTLCameraStatus(str, Enum):
 class DTLConfig:
     """Configuration for DTL camera recording."""
 
-    # Resolution — 1080p is a good balance for swing review
+    # Resolution — 1080p is widely compatible; ISP scales from IMX708's native 2304x1296
     width: int = 1920
     height: int = 1080
     framerate: int = 30
@@ -97,10 +98,12 @@ class DTLCameraRecorder:
         config: Optional[DTLConfig] = None,
         clip_dir: Optional[Path] = None,
         status_callback: Optional[Callable[[DTLCameraStatus], None]] = None,
+        clip_callback: Optional[Callable[["SavedClip"], None]] = None,
     ):
         self.config = config or DTLConfig()
         self.clip_dir = clip_dir or Path.home() / "openflight_sessions" / "dtl_clips"
         self._status_callback = status_callback
+        self._clip_callback = clip_callback
 
         self._camera: Optional["Picamera2"] = None
         self._encoder: Optional["H264Encoder"] = None
@@ -165,15 +168,11 @@ class DTLCameraRecorder:
             quality = quality_map.get(self.config.quality.upper(), Quality.MEDIUM)
 
             self._encoder = H264Encoder()
-            buffer_size_bytes = int(
-                self.config.pre_trigger_seconds
-                * self.config.framerate
-                * self.config.width
-                * self.config.height
-                * 0.05  # rough H.264 bytes-per-pixel estimate
-            )
-            # CircularOutput keeps a rolling buffer of encoded frames
-            self._circular = CircularOutput(buffersize=buffer_size_bytes)
+            # CircularOutput buffersize is frame count, not bytes
+            buffer_frames = max(1, math.ceil(
+                self.config.pre_trigger_seconds * self.config.framerate * 1.1
+            ))
+            self._circular = CircularOutput(buffersize=buffer_frames)
 
             self._camera.start()
             self._camera.start_encoder(self._encoder, self._circular, quality=quality)
@@ -278,17 +277,15 @@ class DTLCameraRecorder:
     def _save_clip(self, clip_path: Path, shot_number: int, trigger_ts: datetime):
         """Background worker: flush ring buffer + record post-trigger, then finalize."""
         try:
-            # Open output file and write the pre-trigger ring buffer
-            with open(clip_path, "wb") as clip_file:
-                file_out = FileOutput(clip_file)
-                self._circular.outputframe(file_out)
+            self._circular.fileoutput = str(clip_path)
+            self._circular.start()
 
-                # Continue recording post-trigger frames directly to file
-                post_end = time.monotonic() + self.config.post_trigger_seconds
-                while time.monotonic() < post_end and self._running:
-                    self._circular.outputframe(file_out)
-                    # Small sleep to avoid busy-waiting; frames arrive at framerate
-                    time.sleep(1.0 / self.config.framerate)
+            # Post-trigger recording with cooperative shutdown check
+            end_time = time.monotonic() + self.config.post_trigger_seconds
+            while time.monotonic() < end_time and self._running:
+                time.sleep(0.1)
+
+            self._circular.stop()
 
             file_size = clip_path.stat().st_size
             clip = SavedClip(
@@ -302,13 +299,18 @@ class DTLCameraRecorder:
                 file_size_bytes=file_size,
             )
             self._clips.append(clip)
-
             logger.info(
                 "Clip saved: %s (%.1f KB, shot #%d)",
                 clip_path.name,
                 file_size / 1024,
                 shot_number,
             )
+
+            if self._clip_callback:
+                try:
+                    self._clip_callback(clip)
+                except Exception:  # pylint: disable=broad-exception-caught
+                    logger.warning("Clip callback failed", exc_info=True)
 
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.error("Failed to save clip for shot #%d: %s", shot_number, exc)
@@ -341,10 +343,12 @@ class MockDTLCameraRecorder:
         config: Optional[DTLConfig] = None,
         clip_dir: Optional[Path] = None,
         status_callback: Optional[Callable[[DTLCameraStatus], None]] = None,
+        clip_callback: Optional[Callable[["SavedClip"], None]] = None,
     ):
         self.config = config or DTLConfig()
         self.clip_dir = clip_dir or Path.home() / "openflight_sessions" / "dtl_clips"
         self._status_callback = status_callback
+        self._clip_callback = clip_callback
         self._status = DTLCameraStatus.IDLE
         self._running = False
         self._shot_count = 0
@@ -413,6 +417,12 @@ class MockDTLCameraRecorder:
         self._set_status(DTLCameraStatus.SAVING)
         # Immediately transition back (mock has no real delay)
         self._set_status(DTLCameraStatus.BUFFERING)
+
+        if self._clip_callback:
+            try:
+                self._clip_callback(clip)
+            except Exception:  # pylint: disable=broad-exception-caught
+                pass
 
         return clip
 
