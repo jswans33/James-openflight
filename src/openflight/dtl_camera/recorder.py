@@ -97,10 +97,12 @@ class DTLCameraRecorder:
         config: Optional[DTLConfig] = None,
         clip_dir: Optional[Path] = None,
         status_callback: Optional[Callable[[DTLCameraStatus], None]] = None,
+        clip_saved_callback: Optional[Callable[["SavedClip"], None]] = None,
     ):
         self.config = config or DTLConfig()
         self.clip_dir = clip_dir or Path.home() / "openflight_sessions" / "dtl_clips"
         self._status_callback = status_callback
+        self._clip_saved_callback = clip_saved_callback
 
         self._camera: Optional["Picamera2"] = None
         self._encoder: Optional["H264Encoder"] = None
@@ -213,11 +215,11 @@ class DTLCameraRecorder:
                 try:
                     self._camera.stop_encoder()
                 except Exception:  # pylint: disable=broad-exception-caught
-                    pass
+                    logger.warning("Failed to stop encoder during cleanup", exc_info=True)
                 self._camera.stop()
                 self._camera.close()
         except Exception:  # pylint: disable=broad-exception-caught
-            pass
+            logger.warning("Failed to clean up camera resources", exc_info=True)
         finally:
             self._camera = None
             self._encoder = None
@@ -310,6 +312,12 @@ class DTLCameraRecorder:
                 shot_number,
             )
 
+            if self._clip_saved_callback:
+                try:
+                    self._clip_saved_callback(clip)
+                except Exception:  # pylint: disable=broad-exception-caught
+                    logger.warning("Clip saved callback failed", exc_info=True)
+
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.error("Failed to save clip for shot #%d: %s", shot_number, exc)
 
@@ -341,10 +349,12 @@ class MockDTLCameraRecorder:
         config: Optional[DTLConfig] = None,
         clip_dir: Optional[Path] = None,
         status_callback: Optional[Callable[[DTLCameraStatus], None]] = None,
+        clip_saved_callback: Optional[Callable[["SavedClip"], None]] = None,
     ):
         self.config = config or DTLConfig()
         self.clip_dir = clip_dir or Path.home() / "openflight_sessions" / "dtl_clips"
         self._status_callback = status_callback
+        self._clip_saved_callback = clip_saved_callback
         self._status = DTLCameraStatus.IDLE
         self._running = False
         self._shot_count = 0
@@ -372,7 +382,7 @@ class MockDTLCameraRecorder:
             try:
                 self._status_callback(new_status)
             except Exception:  # pylint: disable=broad-exception-caught
-                pass
+                logger.warning("Status callback failed", exc_info=True)
 
     def start(self):
         """Start mock recording."""
@@ -413,6 +423,12 @@ class MockDTLCameraRecorder:
         self._set_status(DTLCameraStatus.SAVING)
         # Immediately transition back (mock has no real delay)
         self._set_status(DTLCameraStatus.BUFFERING)
+
+        if self._clip_saved_callback:
+            try:
+                self._clip_saved_callback(clip)
+            except Exception:  # pylint: disable=broad-exception-caught
+                logger.warning("Clip saved callback failed", exc_info=True)
 
         return clip
 

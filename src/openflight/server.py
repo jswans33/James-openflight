@@ -396,11 +396,15 @@ def _init_dtl_camera(
     try:
         if mock:
             dtl_recorder = MockDTLCameraRecorder(
-                config=config, clip_dir=clip_dir, status_callback=on_dtl_status,
+                config=config, clip_dir=clip_dir,
+                status_callback=on_dtl_status,
+                clip_saved_callback=_on_dtl_clip_saved,
             )
         else:
             dtl_recorder = DTLCameraRecorder(
-                config=config, clip_dir=clip_dir, status_callback=on_dtl_status,
+                config=config, clip_dir=clip_dir,
+                status_callback=on_dtl_status,
+                clip_saved_callback=_on_dtl_clip_saved,
             )
         dtl_recorder.start()
         dtl_enabled = True
@@ -410,6 +414,22 @@ def _init_dtl_camera(
         print(f"[DTL] Failed to initialize camera: {e}")
         dtl_recorder = None
         return False
+
+
+def _on_dtl_clip_saved(clip: "SavedClip"):
+    """Called by the DTL recorder after a clip is fully written to disk."""
+    session_logger = get_session_logger()
+    if session_logger:
+        session_logger.log_dtl_clip(
+            shot_number=clip.shot_number,
+            clip_path=str(clip.path),
+            trigger_time=clip.trigger_time,
+            pre_seconds=clip.pre_seconds,
+            post_seconds=clip.post_seconds,
+            resolution=clip.resolution,
+            framerate=clip.framerate,
+            file_size_bytes=clip.file_size_bytes,
+        )
 
 
 def _stop_dtl_camera():
@@ -764,19 +784,8 @@ def on_shot_detected(shot: Shot):
                     "pre_seconds": clip.pre_seconds,
                     "post_seconds": clip.post_seconds,
                 }
-                # Log to session logger
-                session_logger = get_session_logger()
-                if session_logger:
-                    session_logger.log_dtl_clip(
-                        shot_number=clip.shot_number,
-                        clip_path=str(clip.path),
-                        trigger_time=clip.trigger_time,
-                        pre_seconds=clip.pre_seconds,
-                        post_seconds=clip.post_seconds,
-                        resolution=clip.resolution,
-                        framerate=clip.framerate,
-                        file_size_bytes=clip.file_size_bytes,
-                    )
+                # Session logging is handled by _on_dtl_clip_saved callback
+                # after the file is fully written (to capture the real file size).
                 print(f"[DTL] Saving clip for shot #{clip.shot_number}: {clip.path.name}")
     except Exception as e:
         print(f"[WARN] DTL camera error: {e}")
@@ -1245,7 +1254,14 @@ def main():
 
     # Initialize DTL swing camera if requested
     if args.dtl_camera:
-        dtl_w, dtl_h = (int(x) for x in args.dtl_resolution.split("x"))
+        try:
+            dtl_w, dtl_h = (int(x) for x in args.dtl_resolution.split("x"))
+        except ValueError:
+            print(
+                f"[ERROR] Invalid --dtl-resolution '{args.dtl_resolution}': "
+                "expected WxH format (e.g. 1920x1080)"
+            )
+            return
         dtl_config = DTLConfig(
             width=dtl_w,
             height=dtl_h,
