@@ -554,6 +554,44 @@ class SessionLogger:
             "club_speed_mph": club_speed_mph,
         })
 
+    def log_dtl_clip(
+        self,
+        shot_number: int,
+        clip_path: str,
+        trigger_time: str,
+        pre_seconds: float,
+        post_seconds: float,
+        resolution: str,
+        framerate: int,
+        file_size_bytes: int = 0,
+    ):
+        """
+        Log a DTL camera clip saved for a shot.
+
+        Args:
+            shot_number: Shot number this clip belongs to
+            clip_path: Path to the saved clip file
+            trigger_time: ISO timestamp of the shot trigger
+            pre_seconds: Seconds of pre-impact footage
+            post_seconds: Seconds of post-impact footage
+            resolution: Video resolution (e.g., "1920x1080")
+            framerate: Video framerate
+            file_size_bytes: File size in bytes
+        """
+        if not self.enabled:
+            return
+
+        self._write_entry("dtl_clip", {
+            "shot_number": shot_number,
+            "clip_path": clip_path,
+            "trigger_time": trigger_time,
+            "pre_seconds": pre_seconds,
+            "post_seconds": post_seconds,
+            "resolution": resolution,
+            "framerate": framerate,
+            "file_size_bytes": file_size_bytes,
+        })
+
     def log_error(self, error: str, context: Optional[Dict] = None):
         """Log an error."""
         if not self.enabled:

@@ -42,6 +42,19 @@ try:
 except ImportError:
     PICAMERA_AVAILABLE = False
 
+# DTL swing camera (optional)
+try:
+    from .dtl_camera import (
+        DTLCameraRecorder,
+        DTLCameraStatus,
+        DTLConfig,
+        MockDTLCameraRecorder,
+        SavedClip,
+    )
+    DTL_AVAILABLE = True
+except ImportError:
+    DTL_AVAILABLE = False
+
 
 app = Flask(__name__, static_folder="../../ui/dist", static_url_path="")
 CORS(app)
@@ -65,6 +78,10 @@ ball_detected: bool = False
 ball_detection_confidence: float = 0.0
 latest_frame: Optional[bytes] = None
 frame_lock = threading.Lock()
+
+# DTL swing camera state
+dtl_recorder: Optional["DTLCameraRecorder | MockDTLCameraRecorder"] = None
+dtl_enabled: bool = False
 
 
 def shot_to_dict(shot: Shot) -> dict:
@@ -321,6 +338,112 @@ def handle_get_camera_status():
     })
 
 
+@socketio.on("get_dtl_status")
+def handle_get_dtl_status():
+    """Get current DTL camera status."""
+    socketio.emit("dtl_camera_status", {
+        "available": dtl_recorder is not None,
+        "enabled": dtl_enabled,
+        "status": dtl_recorder.status.value if dtl_recorder else "idle",
+        "clips_saved": len(dtl_recorder.clips) if dtl_recorder else 0,
+    })
+
+
+@socketio.on("toggle_dtl_camera")
+def handle_toggle_dtl_camera():
+    """Toggle DTL camera on/off."""
+    global dtl_enabled  # pylint: disable=global-statement
+
+    if not dtl_recorder:
+        socketio.emit("dtl_camera_status", {
+            "available": False,
+            "enabled": False,
+            "status": "idle",
+            "error": "DTL camera not initialized",
+        })
+        return
+
+    dtl_enabled = not dtl_enabled
+    socketio.emit("dtl_camera_status", {
+        "available": True,
+        "enabled": dtl_enabled,
+        "status": dtl_recorder.status.value,
+        "clips_saved": len(dtl_recorder.clips),
+    })
+    print(f"DTL camera {'enabled' if dtl_enabled else 'disabled'}")
+
+
+def _init_dtl_camera(
+    mock: bool = False,
+    clip_dir: Optional[Path] = None,
+    config: Optional["DTLConfig"] = None,
+) -> bool:
+    """Initialize the DTL swing camera recorder."""
+    global dtl_recorder, dtl_enabled  # pylint: disable=global-statement
+
+    if not DTL_AVAILABLE:
+        print("DTL camera module not available")
+        return False
+
+    def on_dtl_status(status: "DTLCameraStatus"):
+        socketio.emit("dtl_camera_status", {
+            "available": True,
+            "enabled": dtl_enabled,
+            "status": status.value,
+            "clips_saved": len(dtl_recorder.clips) if dtl_recorder else 0,
+        })
+
+    def on_dtl_clip_saved(clip: "SavedClip"):
+        """Called from background thread when clip save completes with real metadata."""
+        session_logger = get_session_logger()
+        if session_logger:
+            session_logger.log_dtl_clip(
+                shot_number=clip.shot_number,
+                clip_path=str(clip.path),
+                trigger_time=clip.trigger_time,
+                pre_seconds=clip.pre_seconds,
+                post_seconds=clip.post_seconds,
+                resolution=clip.resolution,
+                framerate=clip.framerate,
+                file_size_bytes=clip.file_size_bytes,
+            )
+        socketio.emit("dtl_clip_saved", {
+            "shot_number": clip.shot_number,
+            "clip_path": str(clip.path),
+            "file_size_bytes": clip.file_size_bytes,
+        })
+
+    try:
+        if mock:
+            dtl_recorder = MockDTLCameraRecorder(
+                config=config, clip_dir=clip_dir,
+                status_callback=on_dtl_status, clip_callback=on_dtl_clip_saved,
+            )
+        else:
+            dtl_recorder = DTLCameraRecorder(
+                config=config, clip_dir=clip_dir,
+                status_callback=on_dtl_status, clip_callback=on_dtl_clip_saved,
+            )
+        dtl_recorder.start()
+        dtl_enabled = True
+        print(f"[DTL] Camera initialized ({'mock' if mock else 'live'})")
+        return True
+    except Exception as e:
+        print(f"[DTL] Failed to initialize camera: {e}")
+        dtl_recorder = None
+        return False
+
+
+def _stop_dtl_camera():
+    """Stop and clean up the DTL camera."""
+    global dtl_recorder, dtl_enabled  # pylint: disable=global-statement
+
+    if dtl_recorder:
+        dtl_recorder.stop()
+        dtl_recorder = None
+    dtl_enabled = False
+
+
 def start_debug_logging():
     """Start logging raw readings to a file."""
     global debug_log_file, debug_log_path  # pylint: disable=global-statement
@@ -447,6 +570,9 @@ def handle_connect():
             "camera_enabled": camera_enabled,
             "camera_streaming": camera_streaming,
             "ball_detected": ball_detected,
+            "dtl_camera_available": dtl_recorder is not None,
+            "dtl_camera_enabled": dtl_enabled,
+            "dtl_camera_status": dtl_recorder.status.value if dtl_recorder else "idle",
         })
         socketio.emit("trigger_status", _get_trigger_status())
 
@@ -647,6 +773,15 @@ def on_shot_detected(shot: Shot):
     except Exception as e:
         print(f"[WARN] Camera processing error: {e}")
         camera_data = None
+
+    # Trigger DTL camera clip save (logging happens via clip_callback)
+    try:
+        if dtl_recorder and dtl_enabled and dtl_recorder.is_running:
+            clip = dtl_recorder.on_shot(shot)
+            if clip:
+                print(f"[DTL] Saving clip for shot #{clip.shot_number}: {clip.path.name}")
+    except Exception as e:
+        print(f"[WARN] DTL camera error: {e}")
 
     # Emit shot with launch angle data included
     try:
@@ -939,6 +1074,27 @@ def main():
         help="Roboflow API key (can also use ROBOFLOW_API_KEY env var)"
     )
     parser.add_argument(
+        "--dtl-camera", action="store_true",
+        help="Enable DTL (down-the-line) swing camera recording"
+    )
+    parser.add_argument(
+        "--dtl-pre", type=float, default=2.0,
+        help="DTL pre-trigger buffer in seconds (default: 2.0)"
+    )
+    parser.add_argument(
+        "--dtl-post", type=float, default=3.0,
+        help="DTL post-trigger recording in seconds (default: 3.0)"
+    )
+    parser.add_argument(
+        "--dtl-resolution",
+        default="1920x1080",
+        help="DTL camera resolution WxH (default: 1920x1080)"
+    )
+    parser.add_argument(
+        "--dtl-fps", type=int, default=30,
+        help="DTL camera framerate (default: 30)"
+    )
+    parser.add_argument(
         "--session-location", "-l", default="range",
         help="Location identifier for session logs (e.g., 'range', 'course', 'home')"
     )
@@ -1089,6 +1245,31 @@ def main():
     else:
         print("Camera disabled by --no-camera flag")
 
+    # Initialize DTL swing camera if requested
+    if args.dtl_camera:
+        dtl_w, dtl_h = (int(x) for x in args.dtl_resolution.split("x"))
+        dtl_config = DTLConfig(
+            width=dtl_w,
+            height=dtl_h,
+            framerate=args.dtl_fps,
+            pre_trigger_seconds=args.dtl_pre,
+            post_trigger_seconds=args.dtl_post,
+        ) if DTL_AVAILABLE else None
+
+        if dtl_config:
+            session_logger = get_session_logger()
+            clip_dir = None
+            if session_logger and session_logger.session_path:
+                clip_dir = session_logger.session_path.parent / "dtl_clips"
+
+            _init_dtl_camera(
+                mock=args.mock,
+                clip_dir=clip_dir,
+                config=dtl_config,
+            )
+        else:
+            print("DTL camera requested but module not available")
+
     print(f"Server starting at http://{args.host}:{args.web_port}")
     print()
 
@@ -1097,6 +1278,7 @@ def main():
         # fighting over the serial port. OpenFlight --debug enables verbose logging only.
         socketio.run(app, host=args.host, port=args.web_port, debug=False, allow_unsafe_werkzeug=True)
     finally:
+        _stop_dtl_camera()
         stop_camera_thread()
         if camera:
             camera.stop()
