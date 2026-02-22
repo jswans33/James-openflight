@@ -253,6 +253,38 @@ class TestMockDTLCameraRecorder:
         recorder.on_shot(MagicMock())
         recorder.stop()
 
+    def test_clip_saved_callback_called_with_file_size(self, tmp_path):
+        """clip_saved_callback should be called with the real file_size_bytes."""
+        saved_clips = []
+
+        def on_clip_saved(clip):
+            saved_clips.append(clip)
+
+        recorder = MockDTLCameraRecorder(
+            clip_dir=tmp_path, clip_saved_callback=on_clip_saved,
+        )
+        recorder.start()
+        recorder.on_shot(MagicMock())
+        recorder.stop()
+
+        assert len(saved_clips) == 1
+        assert saved_clips[0].file_size_bytes == 128
+
+    def test_clip_saved_callback_exception_swallowed(self, tmp_path):
+        """Broken clip_saved_callback should not crash the recorder."""
+        def bad_callback(clip):
+            raise RuntimeError("oops")
+
+        recorder = MockDTLCameraRecorder(
+            clip_dir=tmp_path, clip_saved_callback=bad_callback,
+        )
+        # Should not raise
+        recorder.start()
+        clip = recorder.on_shot(MagicMock())
+        recorder.stop()
+
+        assert clip is not None
+
 
 # ---------------------------------------------------------------------------
 # Session logger integration tests
