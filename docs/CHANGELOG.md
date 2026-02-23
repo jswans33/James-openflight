@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- DTL (down-the-line) swing camera recording module with ring buffer and shot-triggered clip saving
+- `--dtl-camera` flag to enable DTL recording, with `--dtl-pre`, `--dtl-post`, `--dtl-resolution`, `--dtl-fps` options
+- WebSocket events for DTL camera status (`dtl_camera_status`, `dtl_clip_saved`)
+- Session logging for DTL clips (`dtl_clip` entry type)
+- Mock DTL recorder for testing without hardware
 - Camera integration with real-time ball detection in UI
 - Ball detection indicator in header (shows detection status)
 - Camera tab with live MJPEG stream and detection overlay
