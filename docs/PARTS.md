@@ -95,6 +95,45 @@ GPIO27 (pin 13) → HOST_INT (J3 Pin 3) [output]
 | MicroSD Card (32GB+) | For Pi OS and software | Any Class 10 | $10 |
 | USB-A to Micro-USB Cable | For OPS243-A radar connection | Any | $5 |
 
+## Shaft IMU Sensor (for club data)
+
+A shaft-mounted IMU measures club face angle, swing path, attack angle, and tempo directly. Communicates to the Pi over BLE. See [ENGINEERING_BACKLOG.md](ENGINEERING_BACKLOG.md) for integration plan.
+
+**Option A: Adafruit (one vendor, STEMMA QT plug-and-play I2C, ~$41 shipped)**
+
+| Part | Description | Link | ~Price |
+|------|-------------|------|--------|
+| **Adafruit QT Py ESP32-C3** | BLE 5.0 + WiFi, STEMMA QT connector | [Adafruit](https://www.adafruit.com/product/5405) | $9.95 |
+| **Adafruit MPU-6050** | 6-axis accel + gyro, STEMMA QT | [Adafruit](https://www.adafruit.com/product/3886) | $12.95 |
+| **3.7V 400mAh LiPo** | JST-PH 2.0mm, fits Adafruit boards | [Adafruit](https://www.adafruit.com/product/3898) | $6.95 |
+| **Micro-Lipo USB-C Charger** | LiPo charger with protection | [Adafruit](https://www.adafruit.com/product/4410) | $5.95 |
+| Shipping | Flat rate | Adafruit | ~$5 |
+
+**Option B: Amazon clone boards (bulk packs, free Prime shipping, ~$35-40)**
+
+| Part | Description | Link | ~Price |
+|------|-------------|------|--------|
+| ESP32-C3 SuperMini (5-pack) | BLE 5.0 + WiFi, 22x18mm | Search "ESP32-C3 SuperMini" | ~$12-15 |
+| GY-521 MPU-6050 (3-pack) | 6-axis accel + gyro, I2C | Search "GY-521 MPU-6050" | ~$6-8 |
+| 3.7V 400mAh LiPo | JST-PH connector | Search "3.7V 400mAh LiPo JST" | ~$8-10 |
+| TP4056 USB-C (5-pack) | LiPo charger with protection | Search "TP4056 USB-C charger" | ~$7-8 |
+
+### Shaft IMU Wiring (I2C, 4 wires)
+
+```
+ESP32-C3          MPU-6050
+  3.3V  ────────  VIN
+  GND   ────────  GND
+  GPIO6 ────────  SDA
+  GPIO7 ────────  SCL
+```
+
+With Adafruit STEMMA QT boards (Option A), use a STEMMA QT cable instead of wiring — no soldering needed.
+
+**Power:** LiPo → TP4056/Micro-Lipo → ESP32-C3 (3.3V out powers MPU-6050)
+
+**Battery life:** 400mAh at ~30mA draw (BLE + IMU) = ~13 hours.
+
 ## Optional
 
 | Part | Description | Link | ~Price |
