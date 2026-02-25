@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `scripts/launch-kiosk-local.sh` — Pi-local kiosk launcher with display auto-detection (Wayland/X11), `--camera` (mock radar + real camera), `--live`, `--stop` flags, and PID tracking
 - DTL (down-the-line) swing camera recording module with ring buffer and shot-triggered clip saving
 - `--dtl-camera` flag to enable DTL recording, with `--dtl-pre`, `--dtl-post`, `--dtl-resolution`, `--dtl-fps` options
 - WebSocket events for DTL camera status (`dtl_camera_status`, `dtl_clip_saved`)

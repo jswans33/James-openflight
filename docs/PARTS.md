@@ -8,9 +8,8 @@ Hardware components for building the OpenFlight golf launch monitor.
 |------|-------------|------|--------|
 | **OPS243-A Radar** | Doppler radar for ball/club speed detection | [OmniPreSense](https://omnipresense.com/product/ops243-a-doppler-radar-sensor/) | $249 |
 | **Raspberry Pi 5** | Main compute unit (4GB+ recommended) | [Adafruit](https://www.adafruit.com/product/5812) | $60 |
-| **Raspberry Pi HQ Camera** | 12.3MP camera for launch angle detection | [Adafruit](https://www.adafruit.com/product/4561) | $50 |
-| **Arducam 4mm CS-Mount Lens** | Wide angle lens for HQ Camera | [Amazon](https://www.amazon.com/dp/B088GWZPL1) | $20 |
-| **7" Touchscreen Display** | HMTECH 7" 1024x600 IPS display | [Amazon](https://www.amazon.com/dp/B0D3QB7X4Z) | $46 |
+| **Raspberry Pi Camera Module 3 Wide** | IMX708 wide-angle (120 FOV) for ball/launch detection | [Adafruit](https://www.adafruit.com/product/5658) | $35 |
+| **7" Touchscreen Display** | 800x480 DSI display (connects to Pi 5 DSI/CSI port) | [Amazon](https://www.amazon.com/dp/B0D3QB7X4Z) | $46 |
 
 ## Sound Trigger (for Rolling Buffer Mode)
 

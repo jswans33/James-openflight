@@ -11,7 +11,7 @@ OpenFlight is a DIY golf launch monitor using the OPS243-A Doppler radar. It mea
 - **Always use `uv` for Python commands.** Use `uv run` to execute Python tools (pytest, pylint, ruff, etc.). Never use bare `python`, `pip`, `pytest`, etc.
 - **Update `pyproject.toml` when adding dependencies.** If new Python packages are introduced, add them to the appropriate dependency list in `pyproject.toml`.
 - **Bug reports: write a failing test first.** When the user reports a bug, write a test that reproduces and confirms the bug before investigating or fixing it.
-- **Default startup is `scripts/start-kiosk.sh`.** Assume the project is started via this script unless told otherwise. It handles venv activation, UI build, and server launch.
+- **Default startup is `scripts/start-kiosk.sh`.** Assume the project is started via this script unless told otherwise. It handles venv activation, UI build, and server launch. On the Pi itself, `scripts/launch-kiosk-local.sh` auto-detects the display environment and manages PIDs.
 
 # Claude Code Prompt for Plan Mode
 
@@ -122,6 +122,10 @@ npm run lint     # ESLint
 ```bash
 scripts/start-kiosk.sh              # Default: kiosk mode with real radar
 scripts/start-kiosk.sh --mock       # Development mode without hardware
+scripts/launch-kiosk-local.sh              # Pi-local: mock demo (auto-detects display)
+scripts/launch-kiosk-local.sh --camera     # Pi-local: mock radar + real camera
+scripts/launch-kiosk-local.sh --live       # Pi-local: real radar + camera
+scripts/launch-kiosk-local.sh --stop       # Stop kiosk
 scripts/start-kiosk.sh --mode rolling-buffer --trigger sound  # Rolling buffer with direct hardware sound trigger (recommended)
 scripts/start-kiosk.sh --mode rolling-buffer --trigger sound-gpio  # Rolling buffer with GPIO software sound trigger (fallback)
 scripts/start-kiosk.sh --mode rolling-buffer --trigger speed  # Rolling buffer with speed-based trigger
@@ -164,7 +168,7 @@ React UI (WebSocket) ──► Flask Server ──► LaunchMonitor ──► OP
 - `streaming/processor.py` - Real-time FFT with CFAR noise rejection
 - `streaming/cfar.py` - 2D CFAR detector using convolution
 - `rolling_buffer/` - Spin rate estimation via continuous I/Q analysis
-- `camera/` - Launch angle detection using YOLO ball tracking
+- `camera/` - Launch angle detection using Hough circle detection (default) or YOLO
 - `session_logger.py` - JSONL logging for post-session analysis
 
 ### Processing Modes

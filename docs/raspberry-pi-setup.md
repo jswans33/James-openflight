@@ -91,9 +91,27 @@ Options:
 ./scripts/start-kiosk.sh --port 3000
 ```
 
+### Local Kiosk Launcher (recommended for Pi display)
+
+The `launch-kiosk-local.sh` script auto-detects the display environment (Wayland/labwc or X11), manages PIDs, and handles clean shutdown:
+
+```bash
+# Mock demo mode (no hardware needed)
+./scripts/launch-kiosk-local.sh
+
+# Mock radar + real camera
+./scripts/launch-kiosk-local.sh --camera
+
+# Full live mode (radar + camera)
+./scripts/launch-kiosk-local.sh --live
+
+# Stop everything
+./scripts/launch-kiosk-local.sh --stop
+```
+
 ### Running Over SSH
 
-If you're SSHed into the Pi and want to launch on the Pi's display:
+If you're SSHed into the Pi and want to launch on the Pi's display, use `launch-kiosk-local.sh` (handles display vars automatically) or set DISPLAY manually:
 
 ```bash
 DISPLAY=:0 ./scripts/start-kiosk.sh
@@ -240,6 +258,18 @@ ls /dev/ttyACM* /dev/ttyUSB*
 # Test with specific port
 openflight --port /dev/ttyACM0 --info
 ```
+
+### Camera Not Detected
+
+Pi 5 has two CSI connectors (CAM0 and CAM1). The camera (IMX708 Wide) uses **CAM0** (the port closer to the HDMI/power side, NOT the USB side). The 7" touchscreen display uses the other DSI/CSI port.
+
+1. Verify correct port — camera on CAM0, display on the other connector
+2. Check ribbon orientation — contacts face the PCB on the Pi side
+3. Reseat the ribbon cable (lift latch, push flat, close latch)
+4. **Reboot required** — camera is only detected at boot time
+5. Verify: `python3 -c "from picamera2 import Picamera2; print(Picamera2.global_camera_info())"`
+   - Should show `imx708_wide` in the output
+   - Empty list `[]` means camera not detected
 
 ### Camera Black Screen
 
