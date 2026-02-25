@@ -1,6 +1,6 @@
 # Engineering Backlog
 
-Last updated: February 22, 2026
+Last updated: February 25, 2026
 Source: Deep-dive code review of the `openflight` fork
 
 ## Overall Assessment
@@ -152,10 +152,46 @@ Acceptance criteria:
 - Update README architecture section to reflect current modules and responsibilities.
 - Keep diagrams and text aligned with implemented server flow.
 
+### P2 - Integrate OpenGolfCoach for physics-based shot analysis
+
+Status: Open
+Fork: https://github.com/jswans33/open-golf-coach (forked from OpenLaunchLabs/open-golf-coach)
+License: Apache 2.0
+
+Issue:
+- OpenFlight currently uses a simple ball-speed-only carry distance estimate. No spin decomposition, shot classification, or physics trajectory modeling.
+
+What OpenGolfCoach provides:
+- Physics-based trajectory: carry distance, total distance, offline deviation, hang time, peak height, descent angle, landing position/velocity — from ball speed, launch angle, and spin data.
+- Spin analysis: converts between total spin/axis and backspin/sidespin components.
+- Shot classification: deterministic shot names (Straight, Draw, Fade, Hook, Slice, Duck Hook, Shank, etc.), quality ranks (S+ through E), and hex colors for UI rendering.
+- Club analytics: estimated club speed, smash factor, club path, face-to-path angle.
+- Python bindings via PyO3 (published as `opengolfcoach` on PyPI, also buildable from our fork with `maturin`).
+
+Integration plan:
+1. Add `opengolfcoach` to `pyproject.toml` dependencies (use PyPI package, fall back to fork build if needed on Pi/ARM).
+2. In `launch_monitor.py` where `Shot` objects are created, call `opengolfcoach.calculate_derived_values()` with available shot data (ball_speed, club_speed, launch_angle if camera provides it, spin_rpm if rolling buffer provides it).
+3. Extend `Shot` dataclass with new fields: carry_distance_physics, total_distance, offline_distance, shot_name, shot_rank, shot_color, backspin, sidespin, hang_time, peak_height.
+4. Emit enriched shot data over WebSocket.
+5. Update React UI to display shot classification (name + rank + color), physics-based distances, and spin breakdown.
+6. Graceful degradation: if only ball_speed is available (no camera/spin), pass what we have — OpenGolfCoach will calculate what it can.
+
+Why this matters:
+- Transforms OpenFlight from a speed-only monitor into a full shot analyzer as more sensors come online (camera for launch angle, rolling buffer for spin).
+
+Acceptance criteria:
+- Shots include physics-based carry/total distance when launch angle data is available.
+- Shots include shot classification name, rank, and color in WebSocket events and UI.
+- Spin decomposition shown in UI when spin data is available.
+- Falls back gracefully to current estimation when minimal data is available.
+- Unit tests cover the integration boundary (mock OpenGolfCoach responses).
+- ARM (Pi) build verified — either PyPI wheel available or fork builds with maturin.
+
 ## Suggested Execution Order
 
 1. Security hardening for Socket.IO and camera endpoints (both P0 items).
 2. Rolling-buffer trigger reset fix + regression coverage.
 3. Server and OPS243 integration tests for critical paths.
 4. `server.py` decomposition and logging decoupling in focused refactors.
-5. Documentation synchronization after architecture refactor boundaries are settled.
+5. OpenGolfCoach integration for physics-based shot analysis.
+6. Documentation synchronization after architecture refactor boundaries are settled.
