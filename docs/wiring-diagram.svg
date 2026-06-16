@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="770" viewBox="0 0 1000 770" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <rect width="1000" height="770" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="500" y="34" text-anchor="middle" font-size="24" font-weight="700" fill="#202124">OpenFlight — Wiring Diagram</text>
+  <text x="500" y="58" text-anchor="middle" font-size="14" fill="#5f6368">OPS243-A radar + SEN-14262 sound trigger + Raspberry Pi 5 + 7&#8243; touchscreen  (no K-LD7, no camera)</text>
+
+  <!-- R17 callout -->
+  <rect x="230" y="72" width="540" height="32" rx="6" fill="#fff3cd" stroke="#e0a800"/>
+  <text x="500" y="92" text-anchor="middle" font-size="13" fill="#7a5b00">&#9888; Before wiring: solder R17 = 47 k&#937; on the SEN-14262 (3.3 V gain fix — replaces the old level shifter)</text>
+
+  <!-- GATE channel label -->
+  <text x="530" y="134" text-anchor="middle" font-size="13" font-weight="600" fill="#9a7400">GATE &#8594; HOST_INT  (impact trigger, ~10 &#181;s)</text>
+
+  <!-- ============ WIRES (under boxes) ============ -->
+  <!-- Yellow GATE: SEN GATE -> OPS243 HOST_INT (direct, not through Pi) -->
+  <path d="M250,255 L290,255 L290,140 L770,140 L770,275 L810,275" fill="none" stroke="#f4b400" stroke-width="3"/>
+
+  <!-- Red VCC: SEN VCC -> Pi 3.3V -->
+  <path d="M250,300 L420,275" fill="none" stroke="#ea4335" stroke-width="3"/>
+  <text x="335" y="281" text-anchor="middle" font-size="12" fill="#c5221f">3.3 V power</text>
+
+  <!-- Black common-ground bus + taps -->
+  <path d="M270,425 L840,425" fill="none" stroke="#202124" stroke-width="3"/>
+  <path d="M250,345 L270,345 L270,425" fill="none" stroke="#202124" stroke-width="3"/>
+  <path d="M420,345 L390,345 L390,425" fill="none" stroke="#202124" stroke-width="3"/>
+  <path d="M810,345 L840,345 L840,425" fill="none" stroke="#202124" stroke-width="3"/>
+  <circle cx="270" cy="425" r="4.5" fill="#202124"/>
+  <circle cx="390" cy="425" r="4.5" fill="#202124"/>
+  <circle cx="840" cy="425" r="4.5" fill="#202124"/>
+  <!-- ground symbol -->
+  <g stroke="#202124" stroke-width="2">
+    <line x1="330" y1="425" x2="330" y2="438"/>
+    <line x1="318" y1="438" x2="342" y2="438"/>
+    <line x1="322" y1="443" x2="338" y2="443"/>
+    <line x1="326" y1="448" x2="334" y2="448"/>
+  </g>
+  <text x="330" y="468" text-anchor="middle" font-size="12" fill="#202124">Common ground (all 3 boards)</text>
+
+  <!-- Radar USB (data link) - crosses ground bus with no junction dot = no connection -->
+  <path d="M900,360 L900,505 L645,505 L645,330 L640,330" fill="none" stroke="#9aa0a6" stroke-width="4"/>
+  <text x="772" y="500" text-anchor="middle" font-size="12" fill="#5f6368">USB — radar data (57600 baud)</text>
+
+  <!-- Touchscreen ribbons -->
+  <path d="M490,395 L490,545" fill="none" stroke="#4285f4" stroke-width="4"/>
+  <text x="478" y="475" text-anchor="end" font-size="12" fill="#1a73e8">DSI (video)</text>
+  <path d="M570,395 L570,545" fill="none" stroke="#9aa0a6" stroke-width="4"/>
+  <text x="582" y="475" text-anchor="start" font-size="12" fill="#5f6368">USB (touch)</text>
+
+  <!-- ============ COMPONENT BOXES ============ -->
+  <!-- SEN-14262 -->
+  <rect x="60" y="215" width="190" height="170" rx="10" fill="#e8f0fe" stroke="#4285f4" stroke-width="2"/>
+  <text x="155" y="245" text-anchor="middle" font-size="16" font-weight="700" fill="#174ea6">SEN-14262</text>
+  <text x="155" y="264" text-anchor="middle" font-size="12" fill="#3c4043">Sound Detector</text>
+  <text x="155" y="368" text-anchor="middle" font-size="10" fill="#9a7400">R17 = 47 k&#937; soldered</text>
+  <circle cx="250" cy="255" r="5" fill="#f4b400" stroke="#ffffff"/>
+  <text x="238" y="259" text-anchor="end" font-size="11" fill="#3c4043">GATE</text>
+  <circle cx="250" cy="300" r="5" fill="#ea4335" stroke="#ffffff"/>
+  <text x="238" y="304" text-anchor="end" font-size="11" fill="#3c4043">VCC</text>
+  <circle cx="250" cy="345" r="5" fill="#202124" stroke="#ffffff"/>
+  <text x="238" y="349" text-anchor="end" font-size="11" fill="#3c4043">GND</text>
+
+  <!-- Raspberry Pi 5 -->
+  <rect x="420" y="180" width="220" height="215" rx="10" fill="#e6f4ea" stroke="#34a853" stroke-width="2"/>
+  <text x="530" y="208" text-anchor="middle" font-size="16" font-weight="700" fill="#137333">Raspberry Pi 5</text>
+  <text x="530" y="226" text-anchor="middle" font-size="11" fill="#3c4043">40-pin GPIO header</text>
+  <circle cx="420" cy="275" r="5" fill="#ea4335" stroke="#ffffff"/>
+  <text x="432" y="279" text-anchor="start" font-size="11" fill="#3c4043">3.3 V  (pin 1)</text>
+  <circle cx="420" cy="345" r="5" fill="#202124" stroke="#ffffff"/>
+  <text x="432" y="349" text-anchor="start" font-size="11" fill="#3c4043">GND  (pin 6)</text>
+  <circle cx="640" cy="330" r="5" fill="#9aa0a6" stroke="#ffffff"/>
+  <text x="628" y="334" text-anchor="end" font-size="11" fill="#3c4043">USB</text>
+  <circle cx="490" cy="395" r="5" fill="#4285f4" stroke="#ffffff"/>
+  <circle cx="570" cy="395" r="5" fill="#9aa0a6" stroke="#ffffff"/>
+
+  <!-- OPS243-A -->
+  <rect x="810" y="215" width="180" height="170" rx="10" fill="#fce8e6" stroke="#ea4335" stroke-width="2"/>
+  <text x="900" y="245" text-anchor="middle" font-size="16" font-weight="700" fill="#a50e0e">OPS243-A</text>
+  <text x="900" y="264" text-anchor="middle" font-size="12" fill="#3c4043">Doppler Radar</text>
+  <circle cx="810" cy="275" r="5" fill="#f4b400" stroke="#ffffff"/>
+  <text x="822" y="279" text-anchor="start" font-size="11" fill="#3c4043">HOST_INT</text>
+  <text x="822" y="298" text-anchor="start" font-size="10" fill="#c5221f">J3 pin 3 — not pin 2!</text>
+  <circle cx="810" cy="345" r="5" fill="#202124" stroke="#ffffff"/>
+  <text x="822" y="349" text-anchor="start" font-size="11" fill="#3c4043">GND  (J3 pin 1)</text>
+  <circle cx="900" cy="360" r="5" fill="#9aa0a6" stroke="#ffffff"/>
+  <text x="900" y="378" text-anchor="middle" font-size="11" fill="#3c4043">USB</text>
+
+  <!-- Touchscreen -->
+  <rect x="420" y="545" width="220" height="130" rx="10" fill="#f1f3f4" stroke="#5f6368" stroke-width="2"/>
+  <text x="530" y="600" text-anchor="middle" font-size="16" font-weight="700" fill="#3c4043">7&#8243; Touchscreen</text>
+  <text x="530" y="622" text-anchor="middle" font-size="11" fill="#5f6368">kiosk UI display</text>
+  <circle cx="490" cy="545" r="5" fill="#4285f4" stroke="#ffffff"/>
+  <circle cx="570" cy="545" r="5" fill="#9aa0a6" stroke="#ffffff"/>
+
+  <!-- ============ LEGEND ============ -->
+  <rect x="60" y="700" width="880" height="50" rx="8" fill="#f8f9fa" stroke="#dadce0"/>
+  <text x="80" y="718" font-size="12" font-weight="600" fill="#3c4043">Legend</text>
+  <line x1="80" y1="734" x2="110" y2="734" stroke="#ea4335" stroke-width="3"/>
+  <text x="116" y="738" font-size="12" fill="#3c4043">3.3 V power</text>
+  <line x1="220" y1="734" x2="250" y2="734" stroke="#202124" stroke-width="3"/>
+  <text x="256" y="738" font-size="12" fill="#3c4043">Ground</text>
+  <line x1="330" y1="734" x2="360" y2="734" stroke="#f4b400" stroke-width="3"/>
+  <text x="366" y="738" font-size="12" fill="#3c4043">GATE trigger signal</text>
+  <line x1="520" y1="734" x2="550" y2="734" stroke="#9aa0a6" stroke-width="4"/>
+  <text x="556" y="738" font-size="12" fill="#3c4043">USB (data / touch)</text>
+  <line x1="700" y1="734" x2="730" y2="734" stroke="#4285f4" stroke-width="4"/>
+  <text x="736" y="738" font-size="12" fill="#3c4043">DSI ribbon (video)</text>
+  <circle cx="845" cy="734" r="4.5" fill="#202124"/>
+  <text x="856" y="738" font-size="12" fill="#3c4043">= junction</text>
+</svg>
