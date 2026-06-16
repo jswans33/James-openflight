@@ -7,17 +7,26 @@ for analysis and debugging.
 
 import json
 import logging
+import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from . import __version__
+from .kld7.radc import RADC_PAYLOAD_BYTES
 from .ops243 import SpeedReading
+
+# Version of the session JSONL format itself. Bump on breaking changes to
+# entry structure; additive changes (new fields, new entry types) do not
+# require a bump. Consumed by offline analysis and (eventually) cloud sync.
+SESSION_FORMAT_VERSION = 1
 
 
 @dataclass
 class SessionMetadata:
     """Metadata about a logging session."""
+
     session_id: str
     start_time: str
     radar_port: Optional[str]
@@ -25,8 +34,15 @@ class SessionMetadata:
     camera_enabled: bool
     camera_model: Optional[str]
     config: Dict[str, Any]
-    mode: str  # "streaming" or "rolling-buffer"
+    mode: str  # "rolling-buffer" or "mock"
     trigger_type: Optional[str]  # For rolling-buffer mode: "polling", "threshold", etc.
+    # Globally unique session identity for cloud sync dedupe. The
+    # timestamp-based session_id stays for filenames and display; this
+    # UUID travels inside the data so renamed/copied session files keep
+    # their identity (see docs/cloud-sync-design.md).
+    session_uuid: str = ""
+    format_version: int = 1
+    app_version: str = ""
 
 
 class SessionLogger:
@@ -44,16 +60,13 @@ class SessionLogger:
     - shot_detected: A shot was recorded
     - shot_camera: Camera tracking data for a shot
     - config_change: Radar configuration changed
-    - error: Any errors during processing
+    - error: Processing failures (component, context, optional exception metadata)
     """
 
     DEFAULT_LOG_DIR = Path.home() / "openflight_sessions"
 
     def __init__(
-        self,
-        log_dir: Optional[Path] = None,
-        location: str = "range",
-        enabled: bool = True
+        self, log_dir: Optional[Path] = None, location: str = "range", enabled: bool = True
     ):
         """
         Initialize session logger.
@@ -91,8 +104,8 @@ class SessionLogger:
         camera_enabled: bool = False,
         camera_model: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
-        mode: str = "streaming",
-        trigger_type: Optional[str] = None
+        mode: str = "rolling-buffer",
+        trigger_type: Optional[str] = None,
     ) -> str:
         """
         Start a new logging session.
@@ -103,7 +116,7 @@ class SessionLogger:
             camera_enabled: Whether camera is enabled
             camera_model: Camera/YOLO model being used
             config: Current radar configuration
-            mode: Radar mode ("streaming" or "rolling-buffer")
+            mode: Radar mode ("rolling-buffer" or "mock")
             trigger_type: Trigger strategy for rolling-buffer mode
 
         Returns:
@@ -146,7 +159,10 @@ class SessionLogger:
             camera_model=camera_model,
             config=config or {},
             mode=mode,
-            trigger_type=trigger_type
+            trigger_type=trigger_type,
+            session_uuid=str(uuid.uuid4()),
+            format_version=SESSION_FORMAT_VERSION,
+            app_version=__version__,
         )
 
         self._write_entry("session_start", asdict(metadata))
@@ -156,6 +172,45 @@ class SessionLogger:
         print(f"[SESSION] Raw radar log: {self._raw_path}")
 
         return self._session_id
+
+    def log_connection(
+        self,
+        device: str,
+        port: str,
+        baud: int = 0,
+        firmware: str = None,
+        radc_available: bool = None,
+        **kwargs,
+    ):
+        """Log device connection details."""
+        if not self.enabled:
+            return
+        entry = {
+            "device": device,
+            "port": port,
+            "baud": baud,
+        }
+        if firmware:
+            entry["firmware"] = firmware
+        if radc_available is not None:
+            entry["radc_available"] = radc_available
+        entry.update(kwargs)
+        self._write_entry("connection", entry)
+
+    def log_clock_sync(self, device: str, port: str, summary: Dict[str, Any]):
+        """Log an OPS clock-sync block (radar-clock -> host-epoch mapping).
+
+        The ``summary`` comes from OPS243Radar.read_clock_sync and carries the
+        per-read offsets plus the best offset/latency, so the radar's internal
+        trigger_time can be converted to a host epoch in live capture and
+        offline analysis.
+        """
+        if not self.enabled:
+            return
+        entry = {"device": device, "port": port}
+        if summary:
+            entry.update(summary)
+        self._write_entry("ops_clock_sync", entry)
 
     def _setup_raw_logging(self):
         """Configure Python logging for raw radar data."""
@@ -169,7 +224,7 @@ class SessionLogger:
         file_handler = logging.FileHandler(self._raw_path)
         file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(
-            logging.Formatter('%(asctime)s.%(msecs)03d - %(message)s', datefmt='%H:%M:%S')
+            logging.Formatter("%(asctime)s.%(msecs)03d - %(message)s", datefmt="%H:%M:%S")
         )
 
         self._raw_logger.addHandler(file_handler)
@@ -192,7 +247,8 @@ class SessionLogger:
             "stats": self._stats.copy(),
             "shot_rate": (
                 self._stats["shots_detected"] / max(1, self._stats["readings_accepted"])
-                if self._stats["readings_accepted"] > 0 else 0
+                if self._stats["readings_accepted"] > 0
+                else 0
             ),
         }
 
@@ -223,11 +279,7 @@ class SessionLogger:
         if not self._session_file:
             return
 
-        entry = {
-            "ts": datetime.now().isoformat(),
-            "type": entry_type,
-            **data
-        }
+        entry = {"ts": datetime.now().isoformat(), "type": entry_type, **data}
 
         self._session_file.write(json.dumps(entry) + "\n")
         self._session_file.flush()
@@ -239,11 +291,14 @@ class SessionLogger:
 
         self._stats["readings_accepted"] += 1
 
-        self._write_entry("reading_accepted", {
-            "speed": reading.speed,
-            "direction": reading.direction.value,
-            "magnitude": reading.magnitude,
-        })
+        self._write_entry(
+            "reading_accepted",
+            {
+                "speed": reading.speed,
+                "direction": reading.direction.value,
+                "magnitude": reading.magnitude,
+            },
+        )
 
     def log_shot(
         self,
@@ -258,8 +313,34 @@ class SessionLogger:
         spin_rpm: Optional[float] = None,
         spin_confidence: Optional[float] = None,
         spin_quality: Optional[str] = None,
+        spin_snr: Optional[float] = None,
+        spin_modulation_depth: Optional[float] = None,
+        spin_peak_freq_hz: Optional[float] = None,
+        spin_seam_cycles: Optional[float] = None,
+        spin_at_lower_rail: Optional[bool] = None,
+        spin_at_upper_rail: Optional[bool] = None,
+        spin_candidates: Optional[List[Dict]] = None,
+        spin_phase_method: Optional[str] = None,
+        spin_phase_rpm: Optional[float] = None,
+        spin_phase_snr: Optional[float] = None,
+        spin_phase_agreement_pct: Optional[float] = None,
+        spin_phase_confirmed: Optional[bool] = None,
+        spin_rejection_reason: Optional[str] = None,
         carry_spin_adjusted: Optional[float] = None,
-        mode: str = "streaming"
+        mode: str = "rolling-buffer",
+        launch_angle_vertical: Optional[float] = None,
+        launch_angle_horizontal: Optional[float] = None,
+        launch_angle_confidence: Optional[float] = None,
+        launch_angle_vertical_confidence: Optional[float] = None,
+        launch_angle_horizontal_confidence: Optional[float] = None,
+        launch_angle_vertical_source: Optional[str] = None,
+        launch_angle_horizontal_source: Optional[str] = None,
+        angle_source: Optional[str] = None,
+        club_angle_deg: Optional[float] = None,
+        club_path_deg: Optional[float] = None,
+        spin_axis_deg: Optional[float] = None,
+        pipeline_ms: Optional[Dict] = None,
+        impact_timestamp: Optional[float] = None,
     ):
         """
         Log a detected shot with all metrics.
@@ -276,15 +357,29 @@ class SessionLogger:
             spin_rpm: Spin rate in RPM (rolling buffer mode only)
             spin_confidence: Confidence of spin detection (rolling buffer mode only)
             spin_quality: Quality assessment ("high", "medium", "low")
+            spin_snr: Signal-to-noise ratio of spin detection
+            spin_modulation_depth: Envelope std/mean ratio
+            spin_peak_freq_hz: Frequency of the picked envelope-FFT peak
+            spin_seam_cycles: Seam cycles in analysis window
+            spin_at_lower_rail: True when peak landed near the low rail
+            spin_at_upper_rail: True when peak landed near the high rail
+            spin_candidates: Ranked envelope-FFT spin peaks for offline analysis
+            spin_phase_method: Phase confirmation method, if attempted
+            spin_phase_rpm: Phase-derived spin candidate, if available
+            spin_phase_snr: Phase-derived candidate SNR
+            spin_phase_agreement_pct: Envelope/phase agreement percentage
+            spin_phase_confirmed: True when phase recovered a low-SNR spin
+            spin_rejection_reason: Human-readable reason if spin was rejected
             carry_spin_adjusted: Carry distance adjusted for spin (rolling buffer mode only)
-            mode: Radar mode ("streaming" or "rolling-buffer")
+            mode: Radar mode ("rolling-buffer" or "mock")
+            impact_timestamp: Host epoch timestamp aligned to impact/OPS trigger time
         """
         if not self.enabled:
             return
 
         self._stats["shots_detected"] += 1
 
-        self._write_entry("shot_detected", {
+        data = {
             "shot_number": self._stats["shots_detected"],
             "ball_speed_mph": ball_speed_mph,
             "club_speed_mph": club_speed_mph,
@@ -297,9 +392,46 @@ class SessionLogger:
             "spin_rpm": spin_rpm,
             "spin_confidence": spin_confidence,
             "spin_quality": spin_quality,
+            "spin_snr": spin_snr,
+            "spin_modulation_depth": spin_modulation_depth,
+            "spin_peak_freq_hz": spin_peak_freq_hz,
+            "spin_candidate_rpm": (
+                round(spin_peak_freq_hz * 60) if spin_peak_freq_hz is not None else None
+            ),
+            "spin_seam_cycles": spin_seam_cycles,
+            "spin_at_lower_rail": spin_at_lower_rail,
+            "spin_at_upper_rail": spin_at_upper_rail,
+            "spin_candidates": spin_candidates,
+            "spin_phase_method": spin_phase_method,
+            "spin_phase_rpm": spin_phase_rpm,
+            "spin_phase_snr": spin_phase_snr,
+            "spin_phase_agreement_pct": spin_phase_agreement_pct,
+            "spin_phase_confirmed": spin_phase_confirmed,
+            "spin_rejection_reason": spin_rejection_reason,
             "carry_spin_adjusted": carry_spin_adjusted,
             "mode": mode,
-        })
+            "launch_angle_vertical": launch_angle_vertical,
+            "launch_angle_horizontal": launch_angle_horizontal,
+            "launch_angle_confidence": launch_angle_confidence,
+            "launch_angle_vertical_confidence": launch_angle_vertical_confidence,
+            "launch_angle_horizontal_confidence": launch_angle_horizontal_confidence,
+            "launch_angle_vertical_source": launch_angle_vertical_source,
+            "launch_angle_horizontal_source": launch_angle_horizontal_source,
+            "impact_timestamp": impact_timestamp,
+        }
+
+        if angle_source is not None:
+            data["angle_source"] = angle_source
+        if club_angle_deg is not None:
+            data["club_angle_deg"] = club_angle_deg
+        if club_path_deg is not None:
+            data["club_path_deg"] = club_path_deg
+        if spin_axis_deg is not None:
+            data["spin_axis_deg"] = spin_axis_deg
+        if pipeline_ms is not None:
+            data["pipeline_ms"] = pipeline_ms
+
+        self._write_entry("shot_detected", data)
 
     def log_camera_data(
         self,
@@ -308,30 +440,90 @@ class SessionLogger:
         launch_angle_horizontal: Optional[float],
         confidence: Optional[float],
         positions_tracked: int,
-        launch_detected: bool
+        launch_detected: bool,
     ):
         """Log camera tracking data for a shot."""
         if not self.enabled:
             return
 
-        self._write_entry("shot_camera", {
-            "shot_number": shot_number,
-            "launch_angle_vertical": launch_angle_vertical,
-            "launch_angle_horizontal": launch_angle_horizontal,
-            "confidence": confidence,
-            "positions_tracked": positions_tracked,
-            "launch_detected": launch_detected,
-        })
+        self._write_entry(
+            "shot_camera",
+            {
+                "shot_number": shot_number,
+                "launch_angle_vertical": launch_angle_vertical,
+                "launch_angle_horizontal": launch_angle_horizontal,
+                "confidence": confidence,
+                "positions_tracked": positions_tracked,
+                "launch_detected": launch_detected,
+            },
+        )
+
+    def log_kld7_buffer(
+        self,
+        shot_number: int,
+        shot_timestamp: float,
+        orientation: str,
+        buffer_frames: list,
+        ball_angle: Optional[Dict] = None,
+        club_angle: Optional[Dict] = None,
+        raw_payload_expected: Optional[bool] = None,
+    ):
+        """Log raw K-LD7 ring buffer alongside OPS243 shot for correlation analysis."""
+        if not self.enabled:
+            return
+
+        radc_frame_count = sum(
+            1 for frame in buffer_frames if frame.get("has_radc") or frame.get("radc_b64")
+        )
+        radc_payload_count = sum(1 for frame in buffer_frames if frame.get("radc_b64"))
+        radc_payload_valid_count = sum(
+            1
+            for frame in buffer_frames
+            if frame.get("radc_b64") and frame.get("radc_payload_bytes") == RADC_PAYLOAD_BYTES
+        )
+        radc_payload_invalid_count = sum(
+            1
+            for frame in buffer_frames
+            if frame.get("radc_b64")
+            and frame.get("radc_payload_bytes") is not None
+            and frame.get("radc_payload_bytes") != RADC_PAYLOAD_BYTES
+        )
+        radc_payload_complete = (
+            radc_frame_count > 0
+            and radc_payload_count == radc_frame_count
+            and radc_payload_invalid_count == 0
+        )
+        self._write_entry(
+            "kld7_buffer",
+            {
+                "shot_number": shot_number,
+                "shot_timestamp": shot_timestamp,
+                "orientation": orientation,
+                "frame_count": len(buffer_frames),
+                "radc_frame_count": radc_frame_count,
+                "radc_payload_count": radc_payload_count,
+                "radc_payload_valid_count": radc_payload_valid_count,
+                "radc_payload_invalid_count": radc_payload_invalid_count,
+                "radc_payload_expected": raw_payload_expected,
+                "radc_payload_complete": radc_payload_complete,
+                "frames": buffer_frames,
+                "ball_angle": ball_angle,
+                "club_angle": club_angle,
+            },
+        )
 
     def log_config_change(self, config: Dict[str, Any], source: str = "user"):
         """Log a radar configuration change."""
         if not self.enabled:
             return
 
-        self._write_entry("config_change", {
-            "config": config,
-            "source": source,
-        })
+        self._write_entry(
+            "config_change",
+            {
+                "config": config,
+                "source": source,
+            },
+        )
 
     def log_iq_reading(
         self,
@@ -341,7 +533,7 @@ class SessionLogger:
         snr: float,
         peak_bin: int,
         cfar_validated: bool,
-        block_count: int
+        block_count: int,
     ):
         """
         Log a speed reading detected from I/Q streaming mode.
@@ -358,21 +550,20 @@ class SessionLogger:
         if not self.enabled:
             return
 
-        self._write_entry("iq_reading", {
-            "speed_mph": speed_mph,
-            "direction": direction,
-            "magnitude": magnitude,
-            "snr": snr,
-            "peak_bin": peak_bin,
-            "cfar_validated": cfar_validated,
-            "block_count": block_count,
-        })
+        self._write_entry(
+            "iq_reading",
+            {
+                "speed_mph": speed_mph,
+                "direction": direction,
+                "magnitude": magnitude,
+                "snr": snr,
+                "peak_bin": peak_bin,
+                "cfar_validated": cfar_validated,
+                "block_count": block_count,
+            },
+        )
 
-    def log_iq_blocks(
-        self,
-        shot_number: int,
-        blocks: List[Dict[str, Any]]
-    ):
+    def log_iq_blocks(self, shot_number: int, blocks: List[Dict[str, Any]]):
         """
         Log raw I/Q blocks for a shot (for post-session analysis).
 
@@ -383,11 +574,14 @@ class SessionLogger:
         if not self.enabled:
             return
 
-        self._write_entry("iq_blocks", {
-            "shot_number": shot_number,
-            "block_count": len(blocks),
-            "blocks": blocks,
-        })
+        self._write_entry(
+            "iq_blocks",
+            {
+                "shot_number": shot_number,
+                "block_count": len(blocks),
+                "blocks": blocks,
+            },
+        )
 
     def log_trigger_event(
         self,
@@ -405,7 +599,7 @@ class SessionLogger:
         nearby players can trip sound triggers.
 
         Args:
-            trigger_type: Type of trigger (e.g., "sound-passthrough", "sound-gpio")
+            trigger_type: Type of trigger (e.g., "sound", "sound-gpio")
             accepted: True if trigger led to valid shot detection
             reason: Reason for rejection (if not accepted)
             peak_speed_mph: Peak speed detected (if any)
@@ -427,14 +621,17 @@ class SessionLogger:
         else:
             self._stats["triggers_rejected"] += 1
 
-        self._write_entry("trigger_event", {
-            "trigger_type": trigger_type,
-            "accepted": accepted,
-            "reason": reason,
-            "peak_speed_mph": peak_speed_mph,
-            "readings_count": readings_count,
-            "latency_ms": latency_ms,
-        })
+        self._write_entry(
+            "trigger_event",
+            {
+                "trigger_type": trigger_type,
+                "accepted": accepted,
+                "reason": reason,
+                "peak_speed_mph": peak_speed_mph,
+                "readings_count": readings_count,
+                "latency_ms": latency_ms,
+            },
+        )
 
     def log_trigger_diagnostic(
         self,
@@ -498,24 +695,27 @@ class SessionLogger:
         else:
             self._stats["triggers_rejected"] += 1
 
-        self._write_entry("trigger_diagnostic", {
-            "trigger_type": trigger_type,
-            "accepted": accepted,
-            "reason": reason,
-            "response_bytes": response_bytes,
-            "total_readings": total_readings,
-            "outbound_readings": outbound_readings,
-            "inbound_readings": inbound_readings,
-            "peak_outbound_mph": peak_outbound_mph,
-            "peak_inbound_mph": peak_inbound_mph,
-            "all_outbound_speeds": all_outbound_speeds or [],
-            "all_inbound_speeds": all_inbound_speeds or [],
-            "ball_speed_mph": ball_speed_mph,
-            "club_speed_mph": club_speed_mph,
-            "spin_rpm": spin_rpm,
-            "carry_yards": carry_yards,
-            "latency_ms": latency_ms,
-        })
+        self._write_entry(
+            "trigger_diagnostic",
+            {
+                "trigger_type": trigger_type,
+                "accepted": accepted,
+                "reason": reason,
+                "response_bytes": response_bytes,
+                "total_readings": total_readings,
+                "outbound_readings": outbound_readings,
+                "inbound_readings": inbound_readings,
+                "peak_outbound_mph": peak_outbound_mph,
+                "peak_inbound_mph": peak_inbound_mph,
+                "all_outbound_speeds": all_outbound_speeds or [],
+                "all_inbound_speeds": all_inbound_speeds or [],
+                "ball_speed_mph": ball_speed_mph,
+                "club_speed_mph": club_speed_mph,
+                "spin_rpm": spin_rpm,
+                "carry_yards": carry_yards,
+                "latency_ms": latency_ms,
+            },
+        )
 
     def log_rolling_buffer_capture(
         self,
@@ -526,6 +726,43 @@ class SessionLogger:
         q_samples: List[int],
         ball_speed_mph: Optional[float] = None,
         club_speed_mph: Optional[float] = None,
+        ball_timestamp_ms: Optional[float] = None,
+        club_timestamp_ms: Optional[float] = None,
+        impact_timestamp_ms: Optional[float] = None,
+        impact_source: Optional[str] = None,
+        impact_reason: Optional[str] = None,
+        impact_speed_delta_mph: Optional[float] = None,
+        impact_transition_gap_ms: Optional[float] = None,
+        impact_last_club_speed_mph: Optional[float] = None,
+        impact_last_club_timestamp_ms: Optional[float] = None,
+        impact_last_club_center_ms: Optional[float] = None,
+        impact_first_ball_speed_mph: Optional[float] = None,
+        impact_first_ball_timestamp_ms: Optional[float] = None,
+        impact_first_ball_center_ms: Optional[float] = None,
+        impact_min_transition_delta_mph: Optional[float] = None,
+        trigger_latency_ms: Optional[float] = None,
+        smash_factor: Optional[float] = None,
+        spin_rpm: Optional[float] = None,
+        spin_confidence: Optional[float] = None,
+        spin_quality: Optional[str] = None,
+        spin_snr: Optional[float] = None,
+        spin_modulation_depth: Optional[float] = None,
+        spin_peak_freq_hz: Optional[float] = None,
+        spin_seam_cycles: Optional[float] = None,
+        spin_at_lower_rail: Optional[bool] = None,
+        spin_at_upper_rail: Optional[bool] = None,
+        spin_candidates: Optional[List[Dict]] = None,
+        spin_phase_method: Optional[str] = None,
+        spin_phase_rpm: Optional[float] = None,
+        spin_phase_snr: Optional[float] = None,
+        spin_phase_agreement_pct: Optional[float] = None,
+        spin_phase_confirmed: Optional[bool] = None,
+        spin_rejection_reason: Optional[str] = None,
+        first_byte_timestamp: Optional[float] = None,
+        trigger_timestamp: Optional[float] = None,
+        trigger_timestamp_source: Optional[str] = None,
+        clock_sync_offset_s: Optional[float] = None,
+        post_trigger_duration_ms: Optional[float] = None,
     ):
         """
         Log raw rolling buffer capture data for offline analysis.
@@ -538,21 +775,125 @@ class SessionLogger:
             q_samples: Raw Q channel samples (4096 values)
             ball_speed_mph: Detected ball speed (if any)
             club_speed_mph: Detected club speed (if any)
+            ball_timestamp_ms: Ball signal position in buffer (ms from start)
+            club_timestamp_ms: Club signal position in buffer (ms from start)
+            impact_timestamp_ms: Selected impact position in buffer (ms from start)
+            impact_source: Source used for impact timing
+            impact_reason: Fallback reason when source is not OPS transition
+            impact_speed_delta_mph: Speed jump across club-to-ball transition
+            impact_transition_gap_ms: Gap between transition frame centers
+            impact_last_club_speed_mph: Last club-like frame speed
+            impact_last_club_timestamp_ms: Last club-like frame start time
+            impact_last_club_center_ms: Last club-like frame center time
+            impact_first_ball_speed_mph: First ball-like frame speed
+            impact_first_ball_timestamp_ms: First ball-like frame start time
+            impact_first_ball_center_ms: First ball-like frame center time
+            impact_min_transition_delta_mph: Minimum speed jump for transition
+            trigger_latency_ms: Edge-to-S! latency (ms)
+            smash_factor: Ball speed / club speed ratio
+            spin_rpm: Detected spin rate in RPM
+            spin_confidence: Confidence of spin detection (0-1)
+            spin_quality: Quality assessment ("high", "medium", "low")
+            spin_snr: Signal-to-noise ratio of spin detection
+            spin_modulation_depth: Envelope std/mean ratio (1-5% real seam,
+                <0.5% noise floor, 0.5-1% suspicious)
+            spin_peak_freq_hz: Frequency of the picked envelope-FFT peak
+            spin_seam_cycles: Seam cycles in analysis window
+            spin_at_lower_rail: True when peak landed at the bottom of
+                the seam search range (envelope-DC leakage suspect)
+            spin_at_upper_rail: True when peak landed at the top of the
+                seam search range (bandpass-shoulder noise suspect)
+            spin_candidates: Ranked envelope-FFT spin peaks for offline analysis
+            spin_phase_method: Phase confirmation method, if attempted
+            spin_phase_rpm: Phase-derived spin candidate, if available
+            spin_phase_snr: Phase-derived candidate SNR
+            spin_phase_agreement_pct: Envelope/phase agreement percentage
+            spin_phase_confirmed: True when phase recovered a low-SNR spin
+            spin_rejection_reason: Human-readable reason if spin was
+                rejected (None on a clean accept)
+            first_byte_timestamp: Host epoch timestamp when the first byte
+                of the hardware-triggered rolling-buffer dump arrived
+            trigger_timestamp: Host epoch timestamp of the inferred hardware trigger
+            trigger_timestamp_source: Method used to infer trigger_timestamp
+            clock_sync_offset_s: Host epoch minus OPS radar clock, when available
+            post_trigger_duration_ms: Duration of the capture after trigger
         """
         if not self.enabled:
             return
 
-        self._write_entry("rolling_buffer_capture", {
-            "shot_number": shot_number,
-            "sample_time": sample_time,
-            "trigger_time": trigger_time,
-            "trigger_offset_ms": (trigger_time - sample_time) * 1000,
-            "sample_count": len(i_samples),
-            "i_samples": i_samples,
-            "q_samples": q_samples,
-            "ball_speed_mph": ball_speed_mph,
-            "club_speed_mph": club_speed_mph,
-        })
+        trigger_offset_ms = (trigger_time - sample_time) * 1000
+        impact_offset_from_trigger_ms = (
+            impact_timestamp_ms - trigger_offset_ms if impact_timestamp_ms is not None else None
+        )
+
+        self._write_entry(
+            "rolling_buffer_capture",
+            {
+                "shot_number": shot_number,
+                "sample_time": sample_time,
+                "trigger_time": trigger_time,
+                "trigger_offset_ms": trigger_offset_ms,
+                "sample_count": len(i_samples),
+                "i_samples": i_samples,
+                "q_samples": q_samples,
+                "ball_speed_mph": ball_speed_mph,
+                "club_speed_mph": club_speed_mph,
+                "ball_timestamp_ms": ball_timestamp_ms,
+                "club_timestamp_ms": club_timestamp_ms,
+                "impact_timestamp_ms": impact_timestamp_ms,
+                "impact_offset_from_trigger_ms": impact_offset_from_trigger_ms,
+                "impact_source": impact_source,
+                "impact_reason": impact_reason,
+                "impact_speed_delta_mph": impact_speed_delta_mph,
+                "impact_transition_gap_ms": impact_transition_gap_ms,
+                "impact_last_club_speed_mph": impact_last_club_speed_mph,
+                "impact_last_club_timestamp_ms": impact_last_club_timestamp_ms,
+                "impact_last_club_center_ms": impact_last_club_center_ms,
+                "impact_first_ball_speed_mph": impact_first_ball_speed_mph,
+                "impact_first_ball_timestamp_ms": impact_first_ball_timestamp_ms,
+                "impact_first_ball_center_ms": impact_first_ball_center_ms,
+                "impact_min_transition_delta_mph": impact_min_transition_delta_mph,
+                "trigger_latency_ms": trigger_latency_ms,
+                "first_byte_timestamp": first_byte_timestamp,
+                "trigger_timestamp": trigger_timestamp,
+                "trigger_timestamp_source": trigger_timestamp_source,
+                "trigger_timestamp_from_first_byte": (
+                    first_byte_timestamp - (post_trigger_duration_ms / 1000.0)
+                    if first_byte_timestamp is not None and post_trigger_duration_ms is not None
+                    else None
+                ),
+                "trigger_timestamp_delta_from_first_byte_ms": (
+                    (trigger_timestamp - (first_byte_timestamp - post_trigger_duration_ms / 1000.0))
+                    * 1000.0
+                    if trigger_timestamp is not None
+                    and first_byte_timestamp is not None
+                    and post_trigger_duration_ms is not None
+                    else None
+                ),
+                "clock_sync_offset_s": clock_sync_offset_s,
+                "post_trigger_duration_ms": post_trigger_duration_ms,
+                "smash_factor": smash_factor,
+                "spin_rpm": spin_rpm,
+                "spin_confidence": spin_confidence,
+                "spin_quality": spin_quality,
+                "spin_snr": spin_snr,
+                "spin_modulation_depth": spin_modulation_depth,
+                "spin_peak_freq_hz": spin_peak_freq_hz,
+                "spin_candidate_rpm": (
+                    round(spin_peak_freq_hz * 60) if spin_peak_freq_hz is not None else None
+                ),
+                "spin_seam_cycles": spin_seam_cycles,
+                "spin_at_lower_rail": spin_at_lower_rail,
+                "spin_at_upper_rail": spin_at_upper_rail,
+                "spin_candidates": spin_candidates,
+                "spin_phase_method": spin_phase_method,
+                "spin_phase_rpm": spin_phase_rpm,
+                "spin_phase_snr": spin_phase_snr,
+                "spin_phase_agreement_pct": spin_phase_agreement_pct,
+                "spin_phase_confirmed": spin_phase_confirmed,
+                "spin_rejection_reason": spin_rejection_reason,
+            },
+        )
 
     def log_dtl_clip(
         self,
@@ -599,10 +940,13 @@ class SessionLogger:
 
         self._stats["errors"] += 1
 
-        self._write_entry("error", {
-            "error": error,
-            "context": context or {},
-        })
+        self._write_entry(
+            "error",
+            {
+                "error": error,
+                "context": context or {},
+            },
+        )
 
     @property
     def session_path(self) -> Optional[Path]:
@@ -634,10 +978,30 @@ def get_session_logger() -> Optional[SessionLogger]:
     return _session_logger
 
 
+def log_session_error(
+    error: str,
+    *,
+    context: Optional[Dict[str, Any]] = None,
+    component: Optional[str] = None,
+    exc: Optional[BaseException] = None,
+) -> None:
+    """Write an error entry to the active session JSONL log, if any."""
+    session = get_session_logger()
+    if session is None:
+        return
+
+    ctx: Dict[str, Any] = dict(context or {})
+    if component:
+        ctx["component"] = component
+    if exc is not None:
+        ctx["exception_type"] = type(exc).__name__
+        ctx["exception_message"] = str(exc)
+
+    session.log_error(error, context=ctx)
+
+
 def init_session_logger(
-    log_dir: Optional[Path] = None,
-    location: str = "range",
-    enabled: bool = True
+    log_dir: Optional[Path] = None, location: str = "range", enabled: bool = True
 ) -> SessionLogger:
     """
     Initialize and return the global session logger.

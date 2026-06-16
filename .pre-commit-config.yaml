@@ -1,0 +1,23 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.10
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: pylint
+        name: pylint
+        entry: uv run pylint --fail-under=9
+        language: system
+        types: [python]
+        files: ^src/openflight/
+
+      - id: eslint
+        name: eslint
+        entry: npm run lint
+        language: system
+        files: ^ui/src/.*\.(ts|tsx)$
+        pass_filenames: false

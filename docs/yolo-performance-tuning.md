@@ -21,13 +21,13 @@ For ~30 FPS with good detection quality:
 
 ```bash
 # Export model to ONNX at 256px
-python scripts/test_yolo_detection.py \
+python scripts/vision/test_yolo_detection.py \
   --model models/golf_ball_yolo11n.pt \
   --imgsz 256 \
   --export-onnx
 
 # Run detection
-DISPLAY=:0 python scripts/test_yolo_detection.py \
+DISPLAY=:0 python scripts/vision/test_yolo_detection.py \
   --model models/golf_ball_yolo11n.onnx \
   --imgsz 256 \
   --threaded
@@ -50,7 +50,7 @@ DISPLAY=:0 python scripts/test_yolo_detection.py \
 Most stable and well-supported on Pi:
 
 ```bash
-python scripts/test_yolo_detection.py \
+python scripts/vision/test_yolo_detection.py \
   --model models/golf_ball_yolo11n.pt \
   --imgsz <SIZE> \
   --export-onnx
@@ -62,7 +62,7 @@ Alternative runtime, supports INT8 quantization:
 ```bash
 pip install openvino
 
-python scripts/test_yolo_detection.py \
+python scripts/vision/test_yolo_detection.py \
   --model models/golf_ball_yolo11n.pt \
   --imgsz <SIZE> \
   --export-openvino
@@ -70,7 +70,7 @@ python scripts/test_yolo_detection.py \
 
 With INT8 quantization (faster but lower accuracy):
 ```bash
-python scripts/test_yolo_detection.py \
+python scripts/vision/test_yolo_detection.py \
   --model models/golf_ball_yolo11n.pt \
   --imgsz <SIZE> \
   --export-openvino --int8
@@ -95,7 +95,7 @@ Theoretically fastest on ARM, but has stability issues (segfaults). Not recommen
 
 ### Maximum FPS (reduced detection quality)
 ```bash
-DISPLAY=:0 python scripts/test_yolo_detection.py \
+DISPLAY=:0 python scripts/vision/test_yolo_detection.py \
   --model models/golf_ball_yolo11n.onnx \
   --imgsz 192 \
   --threaded \
@@ -104,7 +104,7 @@ DISPLAY=:0 python scripts/test_yolo_detection.py \
 
 ### Best detection (slower)
 ```bash
-DISPLAY=:0 python scripts/test_yolo_detection.py \
+DISPLAY=:0 python scripts/vision/test_yolo_detection.py \
   --model models/golf_ball_yolo11n.onnx \
   --imgsz 320 \
   --threaded
@@ -112,7 +112,7 @@ DISPLAY=:0 python scripts/test_yolo_detection.py \
 
 ### Headless benchmark
 ```bash
-python scripts/test_yolo_detection.py \
+python scripts/vision/test_yolo_detection.py \
   --model models/golf_ball_yolo11n.onnx \
   --imgsz 256 \
   --threaded \
@@ -121,7 +121,7 @@ python scripts/test_yolo_detection.py \
 
 ### Lower confidence for more detections
 ```bash
-DISPLAY=:0 python scripts/test_yolo_detection.py \
+DISPLAY=:0 python scripts/vision/test_yolo_detection.py \
   --model models/golf_ball_yolo11n.onnx \
   --imgsz 224 \
   --threaded \

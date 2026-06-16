@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import type { Shot, SessionStats, SessionState, TriggerDiagnostic, TriggerStatus } from '../types/shot';
+import { useShotContext } from '../state/useShotContext';
+import { getServerOrigin } from '../utils/serverOrigin';
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:8080';
+const SOCKET_URL = getServerOrigin();
 
 export interface DebugReading {
   speed: number;
@@ -47,6 +49,20 @@ export interface DebugShotLog {
 
 export function useSocket() {
   const socketRef = useRef<Socket | null>(null);
+  const { addShot, setShots, clearShots } = useShotContext();
+
+  // Keep stable refs so socket event handlers always see the latest callbacks
+  // without needing to re-register listeners when they change.
+  const addShotRef = useRef(addShot);
+  const setShotsRef = useRef(setShots);
+  const clearShotsRef = useRef(clearShots);
+
+  useEffect(() => {
+    addShotRef.current = addShot;
+    setShotsRef.current = setShots;
+    clearShotsRef.current = clearShots;
+  }, [addShot, setShots, clearShots]);
+
   const [connected, setConnected] = useState(false);
   const [mockMode, setMockMode] = useState(false);
   const [debugMode, setDebugMode] = useState(false);
@@ -58,8 +74,6 @@ export function useSocket() {
     min_magnitude: 0,
     transmit_power: 0,
   });
-  const [latestShot, setLatestShot] = useState<Shot | null>(null);
-  const [shots, setShots] = useState<Shot[]>([]);
   // Camera state
   const [cameraStatus, setCameraStatus] = useState<CameraStatus>({
     available: false,
@@ -71,7 +85,7 @@ export function useSocket() {
   // Trigger diagnostics state
   const [triggerDiagnostics, setTriggerDiagnostics] = useState<TriggerDiagnostic[]>([]);
   const [triggerStatus, setTriggerStatus] = useState<TriggerStatus>({
-    mode: 'streaming',
+    mode: 'rolling-buffer',
     trigger_type: null,
     radar_connected: false,
     radar_port: null,
@@ -98,46 +112,42 @@ export function useSocket() {
     });
 
     newSocket.on('shot', (data: { shot: Shot; stats: SessionStats }) => {
-      setLatestShot(data.shot);
-      setShots((prev) => {
-        const updated = [...prev, data.shot];
-        // Keep only last 200 shots in UI state to prevent memory issues
-        return updated.length > 200 ? updated.slice(-200) : updated;
-      });
-
+      addShotRef.current(data.shot);
     });
 
-    newSocket.on('session_state', (data: SessionState & {
-      mock_mode?: boolean;
-      debug_mode?: boolean;
-      camera_available?: boolean;
-      camera_enabled?: boolean;
-      camera_streaming?: boolean;
-      ball_detected?: boolean;
-    }) => {
-      console.log('Session state received:', data);
-      setShots(data.shots);
+    newSocket.on(
+      'session_state',
+      (
+        data: SessionState & {
+          mock_mode?: boolean;
+          debug_mode?: boolean;
+          camera_available?: boolean;
+          camera_enabled?: boolean;
+          camera_streaming?: boolean;
+          ball_detected?: boolean;
+        }
+      ) => {
+        console.log('Session state received:', data);
+        setShotsRef.current(data.shots);
 
-      if (data.mock_mode !== undefined) {
-        setMockMode(data.mock_mode);
+        if (data.mock_mode !== undefined) {
+          setMockMode(data.mock_mode);
+        }
+        if (data.debug_mode !== undefined) {
+          setDebugMode(data.debug_mode);
+        }
+        // Update camera status from session state
+        if (data.camera_available !== undefined) {
+          setCameraStatus((prev) => ({
+            ...prev,
+            available: data.camera_available!,
+            enabled: data.camera_enabled || false,
+            streaming: data.camera_streaming || false,
+            ball_detected: data.ball_detected || false,
+          }));
+        }
       }
-      if (data.debug_mode !== undefined) {
-        setDebugMode(data.debug_mode);
-      }
-      if (data.shots.length > 0) {
-        setLatestShot(data.shots[data.shots.length - 1]);
-      }
-      // Update camera status from session state
-      if (data.camera_available !== undefined) {
-        setCameraStatus(prev => ({
-          ...prev,
-          available: data.camera_available!,
-          enabled: data.camera_enabled || false,
-          streaming: data.camera_streaming || false,
-          ball_detected: data.ball_detected || false,
-        }));
-      }
-    });
+    );
 
     newSocket.on('debug_toggled', (data: { enabled: boolean }) => {
       setDebugMode(data.enabled);
@@ -173,7 +183,7 @@ export function useSocket() {
     });
 
     newSocket.on('ball_detection', (data: { detected: boolean; confidence: number }) => {
-      setCameraStatus(prev => ({
+      setCameraStatus((prev) => ({
         ...prev,
         ball_detected: data.detected,
         ball_confidence: data.confidence,
@@ -181,8 +191,7 @@ export function useSocket() {
     });
 
     newSocket.on('session_cleared', () => {
-      setShots([]);
-      setLatestShot(null);
+      clearShotsRef.current();
     });
 
     newSocket.on('trigger_diagnostic', (data: TriggerDiagnostic) => {
@@ -190,7 +199,7 @@ export function useSocket() {
         const updated = [...prev, data];
         return updated.length > 50 ? updated.slice(-50) : updated;
       });
-      setTriggerStatus(prev => ({
+      setTriggerStatus((prev) => ({
         ...prev,
         triggers_total: prev.triggers_total + 1,
         triggers_accepted: prev.triggers_accepted + (data.accepted ? 1 : 0),
@@ -239,6 +248,10 @@ export function useSocket() {
     socketRef.current?.emit('toggle_camera_stream');
   }, []);
 
+  const shutdown = useCallback(() => {
+    fetch('/api/shutdown', { method: 'POST' }).catch(() => {});
+  }, []);
+
   return {
     connected,
     mockMode,
@@ -246,8 +259,6 @@ export function useSocket() {
     debugReadings,
     debugShotLogs,
     radarConfig,
-    latestShot,
-    shots,
     cameraStatus,
     triggerDiagnostics,
     triggerStatus,
@@ -258,5 +269,6 @@ export function useSocket() {
     updateRadarConfig,
     toggleCamera,
     toggleCameraStream,
+    shutdown,
   };
 }

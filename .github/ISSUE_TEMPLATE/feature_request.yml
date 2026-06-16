@@ -1,0 +1,54 @@
+name: Feature Request
+description: Suggest a new feature or improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea for OpenFlight? We'd love to hear it.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What would you like to see added or changed?
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: Why is this useful? What problem does it solve?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the system does this relate to?
+      options:
+        - Radar / signal processing
+        - UI / frontend
+        - Carry / distance model
+        - Session data / analytics
+        - Hardware / wiring
+        - Developer experience
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Have you considered any alternative approaches?
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I'm willing to work on this

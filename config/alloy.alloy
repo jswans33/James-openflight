@@ -1,11 +1,11 @@
 // OpenFlight Log Shipping Configuration for Grafana Alloy
 //
-// This configuration tails OpenFlight session logs (JSONL format) and ships
-// them to Grafana Cloud Loki. It extracts relevant labels from the JSON
-// structure for efficient querying.
+// Ships session logs (JSONL) to Grafana Cloud Loki for analysis.
 //
-// To use: Copy to /etc/alloy/config.alloy on your Raspberry Pi
-// Or run scripts/setup_alloy.sh to install automatically
+// Setup:
+//   1. Install Alloy: sudo ./scripts/setup_alloy.sh
+//   2. Fill in /etc/alloy/credentials.env with your Grafana Cloud credentials
+//   3. Alloy starts automatically with start-kiosk.sh
 //
 // Environment variables required:
 //   LOKI_URL     - Grafana Cloud Loki push endpoint
@@ -17,36 +17,22 @@
 // =============================================================================
 
 // Watch for new session log files
-// Default path: ~/openflight_sessions/session_*.jsonl
+// The path is set by setup_alloy.sh based on the actual user's home directory.
+// Default: ~/openflight_sessions/session_*.jsonl
 local.file_match "openflight_logs" {
-  path_targets = [{"__path__" = "/home/pi/openflight_sessions/session_*.jsonl"}]
-  sync_period  = "10s"  // Check for new files every 10s
-}
-
-// Also watch raw radar logs for debugging
-local.file_match "radar_raw_logs" {
-  path_targets = [{"__path__" = "/home/pi/openflight_sessions/radar_raw_*.log"}]
+  path_targets = [{"__path__" = "/home/coleman/openflight_sessions/session_*.jsonl"}]
   sync_period  = "10s"
 }
 
 // =============================================================================
-// Log Sources
+// Log Source
 // =============================================================================
 
-// Tail JSONL session logs
 loki.source.file "openflight_sessions" {
   targets    = local.file_match.openflight_logs.targets
   forward_to = [loki.process.openflight_json.receiver]
 
-  // Start from beginning of file (not just new entries)
-  tail_from_end = false
-}
-
-// Tail raw radar logs
-loki.source.file "radar_raw" {
-  targets    = local.file_match.radar_raw_logs.targets
-  forward_to = [loki.process.radar_raw.receiver]
-
+  // Start from beginning of file (ship full session history)
   tail_from_end = false
 }
 
@@ -57,21 +43,27 @@ loki.source.file "radar_raw" {
 loki.process "openflight_json" {
   forward_to = [loki.write.grafana_cloud.receiver]
 
-  // Parse JSON to extract fields
+  // Parse JSON to extract fields for labels and structured metadata
   stage.json {
     expressions = {
-      log_type    = "type",       // session_start, shot_detected, reading_accepted, etc.
-      mode        = "mode",       // streaming, rolling-buffer
-      club        = "club",       // driver, 7-iron, etc.
-      shot_number = "shot_number",
-      ball_speed  = "ball_speed_mph",
-      club_speed  = "club_speed_mph",
-      carry       = "estimated_carry_yards",
-      spin_rpm    = "spin_rpm",
+      log_type     = "type",
+      mode         = "mode",
+      club         = "club",
+      shot_number  = "shot_number",
+      ball_speed   = "ball_speed_mph",
+      club_speed   = "club_speed_mph",
+      carry        = "estimated_carry_yards",
+      spin_rpm     = "spin_rpm",
+      launch_v     = "launch_angle_vertical",
+      launch_h     = "launch_angle_horizontal",
+      angle_source = "angle_source",
+      club_aoa     = "club_angle_deg",
+      club_path    = "club_path_deg",
+      spin_axis    = "spin_axis_deg",
     }
   }
 
-  // Add extracted values as labels for efficient querying
+  // Add extracted values as labels for efficient querying in Loki
   stage.labels {
     values = {
       log_type = "",
@@ -83,9 +75,8 @@ loki.process "openflight_json" {
   // Add static identifying labels
   stage.static_labels {
     values = {
-      app       = "openflight",
-      log_source = "session",
-      host      = constants.hostname,
+      app  = "openflight",
+      host = constants.hostname,
     }
   }
 
@@ -103,23 +94,6 @@ loki.process "openflight_json" {
 }
 
 // =============================================================================
-// Raw Radar Log Processing
-// =============================================================================
-
-loki.process "radar_raw" {
-  forward_to = [loki.write.grafana_cloud.receiver]
-
-  // Add static labels for raw radar logs
-  stage.static_labels {
-    values = {
-      app        = "openflight",
-      log_source = "radar_raw",
-      host       = constants.hostname,
-    }
-  }
-}
-
-// =============================================================================
 // Loki Output
 // =============================================================================
 
@@ -132,11 +106,10 @@ loki.write "grafana_cloud" {
       password = env("LOKI_API_KEY")
     }
 
-    // Retry configuration for unreliable network
+    // Retry on rate limiting
     retry_on_http_429 = true
   }
 
   // Local WAL for buffering during network outages
-  // Logs are persisted and retried when connection is restored
   external_labels = {}
 }

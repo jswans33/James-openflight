@@ -11,8 +11,8 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
 import numpy as np
-from trackers import ByteTrackTracker
 import supervision as sv
+from trackers import ByteTrackTracker
 
 from .capture import CapturedFrame
 from .detector import BallDetector, DetectedBall, DetectorConfig
@@ -23,6 +23,7 @@ logger = logging.getLogger("openflight.camera.tracker")
 @dataclass
 class TrackedBall:
     """A tracked golf ball with persistent ID across frames."""
+
     track_id: int
     x: float
     y: float
@@ -42,13 +43,14 @@ class TrackedBall:
             self.x - self.radius,
             self.y - self.radius,
             self.x + self.radius,
-            self.y + self.radius
+            self.y + self.radius,
         )
 
 
 @dataclass
 class BallTrajectory:
     """Complete trajectory of a tracked ball."""
+
     track_id: int
     positions: List[TrackedBall] = field(default_factory=list)
 
@@ -78,18 +80,22 @@ class BallTrajectory:
 
         # Ball should generally move upward (y decreases in image coords)
         y_positions = [p.y for p in self.positions]
-        y_decreasing = sum(1 for i in range(1, len(y_positions))
-                          if y_positions[i] < y_positions[i-1])
+        y_decreasing = sum(
+            1 for i in range(1, len(y_positions)) if y_positions[i] < y_positions[i - 1]
+        )
 
         # Ball should shrink (moving away from camera)
         radii = [p.radius for p in self.positions]
-        radius_decreasing = sum(1 for i in range(1, len(radii))
-                                if radii[i] <= radii[i-1] * 1.1)  # Allow some tolerance
+        radius_decreasing = sum(
+            1 for i in range(1, len(radii)) if radii[i] <= radii[i - 1] * 1.1
+        )  # Allow some tolerance
 
         # At least 60% of frames should show expected motion
         threshold = 0.6
-        return (y_decreasing / (len(y_positions) - 1) >= threshold and
-                radius_decreasing / (len(radii) - 1) >= threshold)
+        return (
+            y_decreasing / (len(y_positions) - 1) >= threshold
+            and radius_decreasing / (len(radii) - 1) >= threshold
+        )
 
     def get_velocity(self) -> Tuple[float, float]:
         """Calculate average velocity in pixels per frame."""
@@ -109,10 +115,11 @@ class BallTrajectory:
 @dataclass
 class TrackerConfig:
     """Configuration for ball tracking."""
+
     # ByteTrack parameters (v2.1.0+ API)
-    lost_track_buffer: int = 30              # Frames to keep lost tracks (at 120fps = 250ms)
+    lost_track_buffer: int = 30  # Frames to keep lost tracks (at 120fps = 250ms)
     track_activation_threshold: float = 0.7  # Confidence threshold for track activation
-    minimum_iou_threshold: float = 0.1       # Minimum IoU for matching
+    minimum_iou_threshold: float = 0.1  # Minimum IoU for matching
 
     # Trajectory filtering
     min_trajectory_frames: int = 3  # Minimum frames for valid trajectory
@@ -141,7 +148,7 @@ class BallTracker:
     def __init__(
         self,
         detector_config: Optional[DetectorConfig] = None,
-        tracker_config: Optional[TrackerConfig] = None
+        tracker_config: Optional[TrackerConfig] = None,
     ):
         self.detector = BallDetector(detector_config)
         self.config = tracker_config or TrackerConfig()
@@ -184,11 +191,7 @@ class BallTracker:
 
         return self._update_bytetrack(detection, frame)
 
-    def _update_bytetrack(
-        self,
-        detection: DetectedBall,
-        frame: CapturedFrame
-    ) -> List[TrackedBall]:
+    def _update_bytetrack(self, detection: DetectedBall, frame: CapturedFrame) -> List[TrackedBall]:
         """Update tracking using ByteTrack."""
         # Convert detection to supervision format
         # ByteTrack expects bounding boxes as [x1, y1, x2, y2]
@@ -221,7 +224,9 @@ class BallTracker:
                 x=cx,
                 y=cy,
                 radius=radius,
-                confidence=tracked.confidence[i] if tracked.confidence is not None else detection.confidence,
+                confidence=tracked.confidence[i]
+                if tracked.confidence is not None
+                else detection.confidence,
                 frame_number=frame.frame_number,
                 timestamp=frame.timestamp,
             )
@@ -271,8 +276,7 @@ class BallTracker:
             return None
 
         # Filter to valid golf trajectories
-        valid = [t for t in self._trajectories.values()
-                 if t.is_valid_golf_trajectory]
+        valid = [t for t in self._trajectories.values() if t.is_valid_golf_trajectory]
 
         if not valid:
             # Fall back to longest trajectory if none are "valid"
@@ -318,6 +322,7 @@ class YOLOBallDetector:
     def __init__(self, model_path: str = "yolov8n.pt", device: str = "cpu"):
         try:
             from ultralytics import YOLO
+
             self._model = YOLO(model_path)
             self._model.to(device)
             self._available = True

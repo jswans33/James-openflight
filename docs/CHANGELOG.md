@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Spin detection: drop the autocorrelation override branch. The autocorr
+  peak inside the envelope search region often lands at minimum lag
+  (~12000 RPM / upper rail) by spectral coincidence, which previously
+  flipped legitimate mid-range FFT seam picks to the upper rail and got
+  them rejected as bandpass-shoulder noise. The autocorr fallback still
+  *confirms* the FFT pick when the two agree within 10%; disagreements
+  are now logged for diagnostics but never replace the FFT result.
+- Spin detection: lower `SPIN_SNR_MIN` from 3.0 → 2.5 so marginal but
+  real seam tones are reported at low confidence instead of dropped.
+
 ### Added
 - `scripts/launch-kiosk-local.sh` — Pi-local kiosk launcher with display auto-detection (Wayland/X11), `--camera` (mock radar + real camera), `--live`, `--stop` flags, and PID tracking
 - DTL (down-the-line) swing camera recording module with ring buffer and shot-triggered clip saving
@@ -14,6 +25,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - WebSocket events for DTL camera status (`dtl_camera_status`, `dtl_clip_saved`)
 - Session logging for DTL clips (`dtl_clip` entry type)
 - Mock DTL recorder for testing without hardware
+- `scripts/analysis/replay_club_speed.py`: offline replay of a proposed
+  MEDIAN club-speed picker against any session log. Builds the same
+  candidate set the production picker uses, applies a 30 % magnitude
+  floor, and reports the median speed for each `rolling_buffer_capture`
+  alongside the originally logged (magnitude-pick) value, with smash
+  factors as a physical sanity check. The script is exploratory and
+  does not change production behaviour — it lets us inspect what a
+  median-based picker would have produced before committing to a code
+  change.
+- `scripts/analysis/plot_spin_debug.py`: 4-panel diagnostic for a single
+  `rolling_buffer_capture` (speed timeline, raw I/Q, bandpass envelope,
+  envelope FFT spectrum) to inspect what the spin algorithm saw and why
+  it accepted or rejected a shot.
+- K-LD7 shot-correlation analysis workflow and theory writeup
+  - `scripts/analyze_kld7.py --pair-shots` for offline club-to-ball pairing on `.pkl` captures
+  - `docs/kld7-ball-detection-theory.md` with capture findings and detection rationale
+- K-LD7 session-review workflow for full JSONL logs
+  - `scripts/review_kld7_session.py` for per-shot profile review on `session_logs/session_*.jsonl`
+  - `docs/kld7-session-review.md` documenting the empirical review method and outputs
+- Persistent rolling buffer mode workaround for OPS243-A HOST_INT pin bug (per OmniPreSense)
+  - `persist_rolling_buffer_mode()` method saves settings to flash memory
+  - `test_rolling_buffer_persist.py` script for one-time radar setup and verification
+  - Rolling buffer + sound trigger is now the default operating mode
+- Grafana Alloy integration for shipping session logs to Grafana Cloud Loki
+  - Setup script (`scripts/setup_alloy.sh`) and config (`config/alloy.alloy`)
+  - Auto-starts with `start-kiosk.sh` when credentials are configured
+  - Observability documentation with LogQL query examples
+- Launch angle estimation from club type and ball speed (fallback when camera unavailable)
+- Tunable Hough circle detection with all 5 parameters as CLI args (`--hough-param1`, `--hough-param2`, `--hough-min-radius`, `--hough-max-radius`, `--hough-min-dist`)
+- Interactive `--tune` mode in `test_launch_angle.py` with live OpenCV trackbar sliders
+- Mock mode now simulates realistic spin and launch angle data (TrackMan-based per-club averages)
+- Sound trigger wiring guide with MOSFET circuit design (`docs/sound-trigger-wiring.md`)
 - Camera integration with real-time ball detection in UI
 - Ball detection indicator in header (shows detection status)
 - Camera tab with live MJPEG stream and detection overlay
@@ -23,7 +66,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rolling buffer mode for experimental spin rate detection
 - Session logging to JSONL files (`~/openflight_sessions/`)
 - I/Q streaming mode with FFT and 2D CFAR noise rejection
-- `--hough-param2` flag for tuning detection sensitivity
 - `--mode rolling-buffer` flag for spin detection
 - `--session-location` and `--log-dir` flags for session logging
 - Roboflow API integration as optional detection backend
@@ -33,10 +75,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rolling buffer spin detection documentation
 
 ### Changed
+- K-LD7 launch-angle processing now uses OPS243 impact timestamps for live correlation
+- K-LD7 ball-burst selection now prefers coherent far-target paths instead of averaging all far PDAT detections
+- Live K-LD7 vertical launch angles now fall back to the existing club-and-speed estimate when the radar result is an obvious false positive
+- Spin detection improved: Hann windowing, zero-padding to 256 points, band-limited search
+- All shot metrics (spin, launch angle, club speed, carry) always shown in UI
+- Shot logging unified — all metrics in single `shot_detected` entry
+- Shot `mode` and `readings_data` are now proper dataclass fields (no more monkey-patching)
+- Session logging enabled in mock mode for testing Alloy integration
 - Default ball detection uses Hough circles instead of YOLO (no ML model required)
 - Camera enabled by default in kiosk mode (use `--no-camera` to disable)
 - Dropped Python 3.9 support (requires >=3.10)
-- Updated Raspberry Pi setup guide with camera UI instructions
+- Updated Raspberry Pi setup guide with camera UI and observability instructions
 
 ## [0.2.0] - 2024-12-01
 

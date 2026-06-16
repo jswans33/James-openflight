@@ -2,340 +2,332 @@
 
 Complete guide for setting up OpenFlight on a Raspberry Pi 5 with the 7" touchscreen display.
 
-## Hardware Requirements
+## Prerequisites
 
+Make sure you have all the hardware. See the **[Parts List](PARTS.md)** for what to buy.
+
+**Required:**
 - Raspberry Pi 5 (4GB+ recommended)
-- 7" Touchscreen Display (e.g., HMTECH 1024x600 IPS)
+- 7" Touchscreen Display
 - MicroSD Card (32GB+)
 - 27W USB-C Power Supply (official Pi 5 PSU recommended)
-- OPS243-A Doppler Radar
-- USB-A to Micro-USB cable (for radar)
+- OPS243-A Doppler Radar + USB cable
+- SparkFun SEN-14262 sound detector (wired per the [Sound Trigger Wiring Guide](sound-trigger-wiring.md))
 
-See [PARTS.md](../PARTS.md) for the full parts list.
+**Optional:**
+- K-LD7 + FTDI adapter (×2) — for launch angle and club path (see [Parts List](PARTS.md))
 
-## Initial Setup
+## Setup
 
 ### 1. Install Raspberry Pi OS
 
-Use Raspberry Pi Imager to flash Raspberry Pi OS (64-bit) to your SD card.
+Use Raspberry Pi Imager to flash **Raspberry Pi OS (64-bit)** to your SD card.
 
-### 2. Clone and Setup
+### 2. Run the setup script
+
+Plug in the OPS243-A (and the K-LD7 adapters if you have them), then:
 
 ```bash
 cd ~
 git clone https://github.com/jewbetcha/openflight.git
 cd openflight
-
-# Run the setup script (handles everything)
-./scripts/setup.sh
+./scripts/setup/setup.sh
 ```
 
-The setup script will:
-- Create a Python virtual environment (with system-site-packages for picamera2)
-- Install all Python dependencies (including camera support on Pi)
-- Install Node.js dependencies
-- Build the UI
-- Run tests to verify installation
+The script installs everything, then walks you through the one-time hardware
+configuration with prompts:
 
-Or manually:
+1. **Dependencies** — Python venv, packages, UI build, test run
+2. **OPS243-A radar** — saves rolling buffer mode to the radar's flash
+   (you'll be asked to unplug/replug the radar once)
+3. **K-LD7 radars** (if you have them) — identifies each radar by plugging
+   them in one at a time, so OpenFlight always knows which is which
+4. **Auto-start on boot** — optional systemd service
+5. **Desktop shortcut** — optional
+
+Every step can be skipped and the script is **safe to re-run** any time —
+it picks up where you left off.
+
+### 3. Start hitting balls
 
 ```bash
-# Install uv if you don't have it
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Create venv with system site packages (needed for picamera2)
-python -m venv .venv --system-site-packages
-source .venv/bin/activate
-
-# Install dependencies
-uv pip install -e ".[ui,camera]"
-
-# Build the UI
-cd ui && npm install && npm run build && cd ..
+./scripts/start-kiosk.sh                # Default: rolling buffer + sound trigger
+./scripts/start-kiosk.sh --kld7         # With K-LD7 angle radars
+./scripts/start-kiosk.sh --mock         # Mock mode (no hardware)
 ```
 
-## Running OpenFlight
+Then open `http://localhost:8080` or use the touchscreen.
 
-### Manual Start
+---
+
+## What the Script Configures (Reference)
+
+You don't need this section unless something went wrong or you prefer to do
+things by hand.
+
+### OPS243-A Rolling Buffer Mode
+
+The OPS243-A needs a one-time configuration to enable rolling buffer mode with
+hardware sound triggering, saved to flash so it boots correctly every time.
+
+> **Why?** The OPS243-A has a firmware bug where the HOST_INT pin mode switches
+> unexpectedly when entering rolling buffer mode at runtime. Saving to flash and
+> power cycling bypasses this. Confirmed by OmniPreSense engineering.
+
+<details>
+<summary>Manual steps</summary>
 
 ```bash
-# With radar connected
-openflight-server
+# 1. Configure and save to flash
+uv run python scripts/hardware-test/test_rolling_buffer_persist.py --setup
 
-# Mock mode (no radar needed)
-openflight-server --mock
+# 2. Power cycle: unplug the radar's USB cable, wait 3 seconds, plug back in
+
+# 3. Verify — make a sound near the SEN-14262, you should see I/Q trigger data
+uv run python scripts/hardware-test/test_rolling_buffer_persist.py --test
 ```
 
-Then open `http://localhost:8080` in a browser.
+</details>
 
-### Kiosk Mode (Fullscreen)
+### K-LD7 Device Names
+
+USB serial adapters can swap between `/dev/ttyUSB0` and `/dev/ttyUSB1` after a
+reboot, so OpenFlight needs fixed names (`/dev/kld7_vertical` and
+`/dev/kld7_horizontal`) to tell the two radars apart. The wizard handles this —
+you just plug each radar in when asked:
 
 ```bash
-./scripts/start-kiosk.sh
+./scripts/setup/setup_kld7_devices.sh          # run / redo the mapping
+./scripts/setup/setup_kld7_devices.sh --show   # check the current mapping
 ```
 
-This starts the server and launches Chromium in fullscreen kiosk mode. Camera is enabled by default if available.
+It also installs the FTDI low-latency rule (the K-LD7 RADC stream runs at
+3 Mbaud and needs `latency_timer=1ms` instead of the Linux default 16ms).
+On startup, the server logs should show both radars at `1ms`:
 
-Options:
-```bash
-# Mock mode (no radar)
-./scripts/start-kiosk.sh --mock
-
-# Disable camera
-./scripts/start-kiosk.sh --no-camera
-
-# Use a custom YOLO model for ball detection
-./scripts/start-kiosk.sh --camera-model models/golf_ball_yolo11n.onnx
-
-# Custom port
-./scripts/start-kiosk.sh --port 3000
+```text
+[KLD7:vertical] USB serial latency_timer=1ms ...
+[KLD7:horizontal] USB serial latency_timer=1ms ...
 ```
 
-### Local Kiosk Launcher (recommended for Pi display)
+<details>
+<summary>Manual steps (what the wizard does)</summary>
 
-The `launch-kiosk-local.sh` script auto-detects the display environment (Wayland/labwc or X11), manages PIDs, and handles clean shutdown:
+Find each adapter's serial number:
 
 ```bash
-# Mock demo mode (no hardware needed)
-./scripts/launch-kiosk-local.sh
-
-# Mock radar + real camera
-./scripts/launch-kiosk-local.sh --camera
-
-# Full live mode (radar + camera)
-./scripts/launch-kiosk-local.sh --live
-
-# Stop everything
-./scripts/launch-kiosk-local.sh --stop
+udevadm info -a /dev/ttyUSB0 | grep '{serial}' | head -1
+udevadm info -a /dev/ttyUSB1 | grep '{serial}' | head -1
 ```
 
-### Running Over SSH
-
-If you're SSHed into the Pi and want to launch on the Pi's display, use `launch-kiosk-local.sh` (handles display vars automatically) or set DISPLAY manually:
+Create a udev rule with the serial numbers (replace `FTXXXXXX`/`FTYYYYYY`):
 
 ```bash
-DISPLAY=:0 ./scripts/start-kiosk.sh
+sudo tee /etc/udev/rules.d/99-kld7.rules << 'EOF'
+SUBSYSTEM=="tty", ATTRS{serial}=="FTXXXXXX", SYMLINK+="kld7_vertical"
+SUBSYSTEM=="tty", ATTRS{serial}=="FTYYYYYY", SYMLINK+="kld7_horizontal"
+EOF
+
+sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
 
-## Auto-Start on Boot
-
-### Enable the Service
+Then install the latency rule:
 
 ```bash
-# Copy the service file
-sudo cp ~/openflight/scripts/openflight.service /etc/systemd/system/
+sudo scripts/setup/setup_kld7_latency.sh
+```
 
-# Reload systemd
+Use `--dry-run` to preview the rule, or `--all-ftdi` if the `/dev/kld7_*`
+names aren't set up yet.
+
+</details>
+
+### Auto-Start on Boot
+
+The setup script installs and enables a systemd service configured for your
+username and install path.
+
+<details>
+<summary>Manual steps and service management</summary>
+
+```bash
+# Install (adjust User= and paths in the file if your username isn't the default)
+sudo cp ~/openflight/scripts/setup/openflight.service /etc/systemd/system/
 sudo systemctl daemon-reload
-
-# Enable auto-start
 sudo systemctl enable openflight
-
-# Start it now
 sudo systemctl start openflight
 ```
 
-### Service Management
+Management:
 
 ```bash
-# Check status
-sudo systemctl status openflight --no-pager
-
-# View logs
-journalctl -u openflight -f
-
-# Stop the service
-sudo systemctl stop openflight
-
-# Restart the service
-sudo systemctl restart openflight
-
-# Disable auto-start
-sudo systemctl disable openflight
+sudo systemctl status openflight --no-pager   # Check status
+journalctl -u openflight -f                   # View logs
+sudo systemctl stop openflight                # Stop
+sudo systemctl restart openflight             # Restart
+sudo systemctl disable openflight             # Disable auto-start
 ```
 
-### Editing the Service
+To modify the service:
 
-The service file is located at `/etc/systemd/system/openflight.service`.
-
-If you need to modify it:
 ```bash
 sudo nano /etc/systemd/system/openflight.service
 sudo systemctl daemon-reload
 sudo systemctl restart openflight
 ```
 
-## Camera Setup (Ball Detection)
+</details>
 
-The camera enables real-time ball detection in the UI. When a ball is detected, a green indicator appears in the header. You can also view the live camera feed with detection overlay in the Camera tab.
+---
 
-### Install Camera Dependencies
+## K-LD7 Physical Setup
 
-```bash
-# Install system library for picamera2
-sudo apt install libcap-dev
+### Mounting
 
-# Install Python packages (OpenCV, tracking, etc.)
-uv pip install -e ".[camera]"
-```
+- **Vertical unit** — measures launch angle. Mount with the antenna plane vertical, aimed at the hitting area.
+- **Horizontal unit** — measures club path / aim direction. Mount with the antenna plane horizontal.
 
-### Test the Camera
+Both should be positioned near the OPS243-A, 3-5 feet behind the tee.
 
-```bash
-# Check if camera is detected
-rpicam-hello --list-cameras
+### Geometry Calibration
 
-# Quick preview test
-rpicam-hello
+The vertical K-LD7 geometry estimator needs the physical mount tilt,
+ball-to-radar distance, and boresight offset to match real launch angles.
 
-# Test ball detection with calibration script
-DISPLAY=:0 python scripts/calibrate_camera.py --use-contours --threshold 150
+1. Start a session with `--kld7-geometry`
+2. Hit 5-10 shots with a known club (7-iron recommended)
+3. Compare reported launch angles to expected values:
+   - Wedge: 24-30°, 7-iron: 16-18°, 5-iron: 12-14°, Driver: 10-14°
+4. Keep `--kld7-mount-tilt` and `--kld7-ball-distance` matched to the physical
+   setup; adjust `--kld7-angle-offset` for a stable boresight bias.
 
-# Optional: Test YOLO detection (see docs/yolo-performance-tuning.md)
-DISPLAY=:0 python scripts/test_yolo_detection.py \
-  --model models/golf_ball_yolo11n.onnx \
-  --imgsz 256 \
-  --threaded
-```
+The current field preset is mount tilt `10°`, ball distance `5ft`, and angle
+offset `+2.5°`. The exact values depend on your mounting position.
 
-### Camera in the UI
+See [K-LD7 Troubleshooting](kld7-troubleshooting.md) for more details.
 
-When the server is started with camera enabled (default), the UI provides:
+## Running OpenFlight
 
-1. **Ball Detection Indicator** (header) - Shows if a ball is currently detected
-   - Click to toggle camera on/off
-   - Green = ball detected, Yellow = searching, Gray = disabled
-
-2. **Camera Tab** - View live camera feed
-   - Enable/disable camera and streaming
-   - Shows detection overlay with bounding boxes
-   - Ball detection status with confidence percentage
-
-### Camera Calibration
+### Kiosk Mode (Fullscreen — Recommended)
 
 ```bash
-# Live view with detection overlay (run on Pi's display)
-DISPLAY=:0 python scripts/calibrate_camera.py --use-contours --threshold 150 --min-radius 20
-
-# Headless mode (over SSH) - saves frames to disk
-python scripts/calibrate_camera.py --headless --num-frames 10
+./scripts/start-kiosk.sh                    # Default: rolling buffer + sound trigger
+./scripts/start-kiosk.sh --kld7-geometry    # With K-LD7 launch-angle geometry defaults
+./scripts/start-kiosk.sh --mock             # Mock mode (no hardware needed)
 ```
 
-Calibration options:
-| Option | Description |
-|--------|-------------|
-| `--threshold` | Brightness threshold (0-255, default 200) |
-| `--min-radius` | Minimum ball radius in pixels (default 5) |
-| `--max-radius` | Maximum ball radius in pixels (default 50) |
-| `--use-contours` | Use contour detection (more stable) |
-| `--circularity` | Minimum circularity for contours (0-1, default 0.3) |
-| `--exposure` | Camera exposure in microseconds (default 2000) |
-| `--gain` | Camera gain for IR sensitivity (default 4.0) |
-| `--headless` | Save frames to disk instead of displaying |
+### Manual Start
 
-## IR LED Setup
+```bash
+openflight-server                # With radar
+openflight-server --mock         # No hardware
+```
 
-For optimal ball detection, use IR LEDs to illuminate the ball.
+Then open `http://localhost:8080`.
 
-### Wiring
+### Running Over SSH
 
-Connect IR LED modules to the Pi's GPIO:
-- **5V**: Pin 2 or Pin 4
-- **GND**: Pin 6, 9, 14, 20, 25, 30, 34, or 39
+```bash
+DISPLAY=:0 ./scripts/start-kiosk.sh
+```
 
-### Testing IR LEDs
+## Observability (Grafana Cloud)
 
-Point your phone camera at the LEDs - you should see a faint purple/white glow if they're working (phone cameras can see IR light).
+OpenFlight can ship session logs to Grafana Cloud for long-term analysis.
+
+```bash
+sudo ./scripts/setup/setup_alloy.sh
+sudo vim /etc/alloy/credentials.env
+```
+
+See [observability.md](observability.md) for full setup and LogQL queries.
 
 ## Troubleshooting
 
 ### Radar Not Detected
 
 ```bash
-# Check if radar is connected
 ls /dev/ttyACM* /dev/ttyUSB*
-
-# Test with specific port
 openflight --port /dev/ttyACM0 --info
 ```
 
-### Camera Not Detected
+### Sound Trigger Not Working
 
-Pi 5 has two CSI connectors (CAM0 and CAM1). The camera (IMX708 Wide) uses **CAM0** (the port closer to the HDMI/power side, NOT the USB side). The 7" touchscreen display uses the other DSI/CSI port.
+See the [Sound Trigger Wiring Guide — Troubleshooting](sound-trigger-wiring.md#troubleshooting).
 
-1. Verify correct port — camera on CAM0, display on the other connector
-2. Check ribbon orientation — contacts face the PCB on the Pi side
-3. Reseat the ribbon cable (lift latch, push flat, close latch)
-4. **Reboot required** — camera is only detected at boot time
-5. Verify: `python3 -c "from picamera2 import Picamera2; print(Picamera2.global_camera_info())"`
-   - Should show `imx708_wide` in the output
-   - Empty list `[]` means camera not detected
+### K-LD7 Not Connecting
 
-### Camera Black Screen
+```bash
+# Check the device mapping
+./scripts/setup/setup_kld7_devices.sh --show
 
-1. Check ribbon cable connection (reseat both ends)
-2. Test with `rpicam-hello`
-3. Check for power issues: `vcgencmd get_throttled` (should return `0x0`)
+# Test standalone
+uv run python scripts/hardware-test/test_kld7.py
+```
+
+If the mapping is missing or points at the wrong radar, re-run the wizard:
+`./scripts/setup/setup_kld7_devices.sh`. Look for `[KLD7] Connected on
+/dev/ttyUSB...` in the server logs. See [K-LD7 Troubleshooting](kld7-troubleshooting.md)
+for "Wrong length reply" and other connection issues.
 
 ### Service Won't Start
 
 ```bash
-# Check logs for errors
 journalctl -u openflight --no-pager -n 50
 
 # If service is masked
 sudo systemctl unmask openflight
-sudo cp ~/openflight/scripts/openflight.service /etc/systemd/system/
+sudo cp ~/openflight/scripts/setup/openflight.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable openflight
 ```
 
 ### Slow UI Updates
 
-If shots take several seconds to appear in the UI, the WebSocket may be unstable. The server uses `async_mode="threading"` which should be stable on Pi 5. If issues persist, check:
-
+Check for WebSocket instability:
 ```bash
-# View server logs
 journalctl -u openflight -f
 ```
 
-Look for "Client disconnected/connected" messages which indicate WebSocket instability.
+Look for "Client disconnected/connected" messages.
 
 ### Display Issues Over SSH
 
-If you see Qt/display errors when running over SSH:
-- Use `DISPLAY=:0` prefix for commands that need the Pi's display
-- Or use `--headless` mode for camera calibration
+Use `DISPLAY=:0` prefix for commands that need the Pi's display.
 
 ## CLI Reference
 
-### Launch Monitor
+### Kiosk
 
 ```bash
-openflight              # Run with auto-detected radar
-openflight --port /dev/ttyACM0  # Specify port
-openflight --live       # Show live speed readings
-openflight --info       # Show radar configuration
+./scripts/start-kiosk.sh                                      # Default
+./scripts/start-kiosk.sh --mock                                # No hardware
+./scripts/start-kiosk.sh --kld7-geometry                       # With angle radar
+./scripts/start-kiosk.sh --port 3000                           # Custom port
 ```
 
 ### Server
 
 ```bash
-openflight-server                        # Start server with radar (camera auto-enabled)
-openflight-server --mock                 # Mock mode (no radar)
-openflight-server --no-camera            # Disable camera
-openflight-server --hough-param2 25      # Tune ball detection sensitivity
-openflight-server --camera-model <path>  # Use YOLO model instead of Hough
-openflight-server --mode rolling-buffer  # Enable spin detection
-openflight-server --web-port 3000        # Custom port
+openflight-server                    # Start with radar
+openflight-server --mock             # Mock mode
+openflight-server --web-port 3000    # Custom port
 ```
 
-### Kiosk
+### Setup
 
 ```bash
-./scripts/start-kiosk.sh              # Production mode (Hough detection, camera auto-enabled)
-./scripts/start-kiosk.sh --mock       # Mock mode
-./scripts/start-kiosk.sh --no-camera  # Disable camera
-./scripts/start-kiosk.sh --hough-param2 25  # Tune detection sensitivity
-./scripts/start-kiosk.sh --camera-model models/golf_ball_yolo11n.onnx  # Use YOLO instead
+./scripts/setup/setup.sh                       # Full interactive setup (re-run safe)
+./scripts/setup/setup.sh --deps-only           # Dependencies only
+./scripts/setup/setup_kld7_devices.sh          # K-LD7 device naming wizard
+./scripts/setup/setup_kld7_devices.sh --show   # Show current K-LD7 mapping
+```
+
+### Testing
+
+```bash
+uv run python scripts/hardware-test/test_rolling_buffer_persist.py --test    # Sound trigger
+uv run python scripts/hardware-test/test_sound_trigger_hardware.py           # Direct trigger test
+uv run python scripts/hardware-test/test_kld7.py                             # K-LD7 standalone
+uv run pytest tests/ -v                                                      # Full test suite
 ```

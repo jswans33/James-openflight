@@ -65,11 +65,11 @@ class HoughDetector:
 
     def __init__(
         self,
-        min_radius: int = 5,
-        max_radius: int = 50,
-        param1: int = 50,
-        param2: int = 27,
-        min_dist: int = 50
+        min_radius: int = 4,
+        max_radius: int = 43,
+        param1: int = 48,
+        param2: int = 33,
+        min_dist: int = 266
     ):
         self.min_radius = min_radius
         self.max_radius = max_radius
@@ -140,7 +140,11 @@ class CameraTracker:
         roboflow_model_id: Optional[str] = None,
         imgsz: int = 256,
         use_hough: bool = True,
-        hough_param2: int = 27,
+        hough_param2: int = 33,
+        hough_param1: int = 48,
+        hough_min_radius: int = 4,
+        hough_max_radius: int = 43,
+        hough_min_dist: int = 266,
     ):
         if not CV2_AVAILABLE:
             raise ImportError("opencv required: pip install opencv-python")
@@ -152,7 +156,13 @@ class CameraTracker:
         self.roboflow_model_id = roboflow_model_id
         self.imgsz = imgsz
 
-        self.hough_detector = HoughDetector(param2=hough_param2)
+        self.hough_detector = HoughDetector(
+            param1=hough_param1,
+            param2=hough_param2,
+            min_radius=hough_min_radius,
+            max_radius=hough_max_radius,
+            min_dist=hough_min_dist,
+        )
         self.tracker = self._create_tracker() if BYTETRACK_AVAILABLE else None
 
         # Initialize YOLO/Roboflow if not using Hough

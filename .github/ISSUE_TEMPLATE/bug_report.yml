@@ -1,0 +1,64 @@
+name: Bug Report
+description: Report a bug or unexpected behavior
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill out the sections below so we can reproduce and fix the issue.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened? What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce this?
+      placeholder: |
+        1. Start the server with `scripts/start-kiosk.sh --mock`
+        2. Open the UI
+        3. Click "Simulate Shot"
+        4. ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the system is affected?
+      options:
+        - Radar / shot detection
+        - Spin detection
+        - Launch angle (K-LD7)
+        - UI / frontend
+        - Server / WebSocket
+        - Session logging
+        - Sound trigger
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Hardware setup
+      description: If this involves hardware, describe your setup.
+      placeholder: |
+        - Radar: OPS243-A (firmware version)
+        - Platform: Raspberry Pi 4 / macOS / Linux
+        - K-LD7 radars: yes/no
+        - Sound trigger: SEN-14262 with ___kΩ resistor
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or session data
+      description: Paste any error messages, server output, or session log excerpts.
+      render: shell

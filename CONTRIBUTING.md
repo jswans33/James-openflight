@@ -6,7 +6,7 @@ Thank you for your interest in contributing to OpenFlight! This document provide
 
 ### Prerequisites
 
-- Python 3.9 or higher
+- Python 3.10 or higher
 - Node.js 20+ (for UI development)
 - Git
 - [uv](https://github.com/astral-sh/uv) package manager (recommended)
@@ -19,43 +19,39 @@ Thank you for your interest in contributing to OpenFlight! This document provide
    cd openflight
    ```
 
-2. **Create a virtual environment**
+2. **Install dependencies**
    ```bash
-   # Using uv (recommended)
-   uv venv
-   source .venv/bin/activate
-
-   # Or using standard venv
-   python -m venv .venv
-   source .venv/bin/activate
+   make install
    ```
 
-3. **Install dependencies**
-   ```bash
-   # Core + UI + camera + dev dependencies
-   uv pip install -e ".[ui,camera]"
-   uv pip install pytest pylint ruff
+   This installs Python dependencies (including dev tools) and UI dependencies.
 
-   # Or with pip
-   pip install -e ".[ui,camera]"
-   pip install pytest pylint ruff
+   Or manually:
+   ```bash
+   uv sync --group dev
+   cd ui && npm install
    ```
+
+3. **Install pre-commit hooks**
+   ```bash
+   make hooks
+   ```
+
+   This runs ruff, pylint, and ESLint automatically before each commit.
 
 4. **Build the UI** (for frontend development)
    ```bash
-   cd ui
-   npm install
-   npm run dev  # Development server with hot reload
+   make build-ui
    ```
 
 ### Running in Development
 
 ```bash
 # Run server in mock mode (no hardware needed)
-openflight-server --mock
+make dev
 
-# Run with debug logging
-openflight-server --mock --debug
+# Or manually:
+scripts/start-kiosk.sh --mock
 
 # Run UI development server (separate terminal)
 cd ui && npm run dev
@@ -63,17 +59,22 @@ cd ui && npm run dev
 
 ## Code Quality Standards
 
+All checks can be run at once with:
+
+```bash
+make lint
+```
+
 ### Python
 
-We use **pylint** for linting with a minimum score of **9.0**.
+We use **pylint** for linting with a minimum score of **9.0** and **ruff** for formatting.
 
 ```bash
 # Check code quality
-pylint src/openflight/
+uv run pylint src/openflight/
 
 # Auto-format with ruff
-ruff format src/
-ruff check --fix src/
+make format
 ```
 
 ### TypeScript/React
@@ -88,18 +89,22 @@ npm run build     # Type check + build
 
 ```bash
 # Run all tests
-pytest tests/ -v
+make test
 
 # Run specific test file
-pytest tests/test_launch_monitor.py -v
+uv run pytest tests/test_launch_monitor.py -v
 
 # Run with coverage (if pytest-cov installed)
-pytest tests/ --cov=src/openflight --cov-report=html
+uv run pytest tests/ --cov=src/openflight --cov-report=html
 ```
 
 **All tests must pass before submitting a PR.**
 
 ## Submitting Changes
+
+### Reporting Issues
+
+Use the [issue templates](https://github.com/jewbetcha/openflight/issues/new/choose) to file bugs, request features, or get help with hardware setup. Check existing issues before creating new ones.
 
 ### Pull Request Process
 
@@ -112,20 +117,17 @@ pytest tests/ --cov=src/openflight --cov-report=html
 
 3. **Ensure quality checks pass**
    ```bash
-   pytest tests/ -v
-   pylint src/openflight/
+   make test
+   make lint
    cd ui && npm run build
    ```
 
 4. **Update documentation** if needed
    - Update README.md for user-facing changes
    - Update relevant docs in `docs/`
-   - Add entry to CHANGELOG.md under `[Unreleased]`
+   - Add entry to `docs/CHANGELOG.md` under `[Unreleased]`
 
-5. **Submit a pull request** with:
-   - Clear title describing the change
-   - Description of what changed and why
-   - Reference to any related issues
+5. **Submit a pull request** and fill out the PR template
 
 ### Commit Messages
 
@@ -135,7 +137,7 @@ Use clear, descriptive commit messages:
 Add ball detection indicator to UI header
 
 - Create BallDetectionIndicator component
-- Add camera status to useSocket hook
+- Add shot data to useSocket hook
 - Update App.tsx to display indicator
 ```
 
@@ -161,37 +163,39 @@ openflight/
 │   ├── ops243.py         # Radar driver
 │   ├── launch_monitor.py # Shot detection
 │   ├── server.py         # WebSocket server
-│   └── camera_tracker.py # Ball tracking
+│   ├── kld7/             # K-LD7 angle radar
+│   └── rolling_buffer/   # Spin detection
 ├── ui/                   # React frontend
 │   └── src/
 │       ├── components/   # UI components
 │       └── hooks/        # React hooks
 ├── tests/                # Test suite
-├── scripts/              # Utility scripts
+├── scripts/
+│   ├── start-kiosk.sh    # Main startup script
+│   ├── analysis/         # Post-session analysis & data capture
+│   ├── hardware-test/    # Radar & trigger testing/debugging
+│   ├── setup/            # Pi setup, systemd, deployment
+│   └── vision/           # Camera, YOLO, ML training
 ├── models/               # ML models
 └── docs/                 # Documentation
 ```
 
 ## Testing Without Hardware
 
-OpenFlight supports **mock mode** for development without radar/camera:
+OpenFlight supports **mock mode** for development without hardware:
 
 ```bash
-# Server with simulated shots
-openflight-server --mock
-
-# Camera calibration with synthetic frames
-python scripts/calibrate_camera.py --mock
+make dev
 ```
 
 The `MockLaunchMonitor` class simulates realistic shot data based on TrackMan averages.
 
 ## Questions?
 
-- Open an issue for bugs or feature requests
+- Use the [issue templates](https://github.com/jewbetcha/openflight/issues/new/choose) for bugs, features, or hardware help
 - Check existing issues before creating new ones
 - Be respectful and constructive in discussions
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the MIT License.
+By contributing, you agree that your contributions will be licensed under the GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later).

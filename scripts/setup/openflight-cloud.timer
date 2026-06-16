@@ -1,0 +1,13 @@
+[Unit]
+Description=Run the OpenFlight cloud uploader every ~10 minutes (heals wifi outages)
+
+[Timer]
+# Fire shortly after boot, then every 10 minutes. RandomizedDelaySec spreads
+# load so a fleet of Pis doesn't hit the server in lockstep.
+OnBootSec=2min
+OnUnitActiveSec=10min
+RandomizedDelaySec=60
+Persistent=true
+
+[Install]
+WantedBy=timers.target

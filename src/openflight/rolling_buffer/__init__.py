@@ -35,18 +35,22 @@ from .trigger import (
     create_trigger,
 )
 from .types import (
+    ImpactEstimate,
     IQCapture,
     ProcessedCapture,
     SpeedReading,
     SpeedTimeline,
+    SpinCandidate,
     SpinResult,
 )
 
 __all__ = [
     # Types
     "IQCapture",
+    "ImpactEstimate",
     "SpeedReading",
     "SpeedTimeline",
+    "SpinCandidate",
     "SpinResult",
     "ProcessedCapture",
     # Processor

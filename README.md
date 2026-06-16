@@ -3,343 +3,239 @@
   DIY Golf Launch Monitor using the OPS243-A Doppler Radar.
 </p>
 
+<p align="center">
+  <a href="https://buymeacoffee.com/colemangolfs">
+    <img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-yellow?style=for-the-badge&logo=buy-me-a-coffee&logoColor=white" alt="Buy Me a Coffee" />
+  </a>
+</p>
+
 > [!WARNING]
-> **This project is in active development.** Features may be incomplete, unstable, or change without notice. Expect bugs and breaking changes. Contributions and bug reports are welcome!
+> **This project is in active development.** Features may be incomplete, unstable, or change without notice. Contributions and bug reports are welcome!
 
 ## Overview
 
-OpenFlight is an open-source golf launch monitor that measures ball speed using a commercial Doppler radar sensor. The OPS243-A from OmniPreSense provides professional-grade speed measurement (±0.5% accuracy) in a simple USB-connected package.
+OpenFlight is an open-source golf launch monitor that uses Doppler radar to measure ball speed, club speed, launch angle, spin rate, and carry distance.
 
 ### What It Measures
 
-- **Ball Speed**: 30-220 mph range with ±0.5% accuracy
-- **Club Speed**: Detected from pre-impact readings
+- **Ball Speed**: 35-200 mph range with ±0.5% accuracy (OPS243-A)
+- **Club Speed**: Detected from pre-impact readings (OPS243-A)
 - **Smash Factor**: Ball speed / club speed ratio
-- **Estimated Carry Distance**: Based on ball speed (simplified model)
-- **Launch Angle** (optional): With Raspberry Pi camera module
-- **Spin Rate** (experimental): Via rolling buffer I/Q analysis (~50-60% detection rate)
+- **Launch Angle**: Vertical launch measured by K-LD7 angle radar
+- **Club Path**: Horizontal aim direction measured by second K-LD7
+- **Spin Rate**: Via rolling buffer I/Q analysis (the hardest radar measurement — see [Limitations](#limitations))
+- **Carry Distance**: Computed from ball speed, launch angle, and spin
 
-### Hardware
+### Hardware at a Glance
 
-| Component      | Description                | Cost      |
-| -------------- | -------------------------- | --------- |
-| OPS243-A       | OmniPreSense Doppler Radar | ~$225     |
-| Raspberry Pi 5 | (or any computer with USB) | ~$80      |
-| USB Cable      | Micro USB to connect radar | ~$5       |
-| **Total**      |                            | **~$310** |
+| Component | What it does | ~Cost |
+|-----------|-------------|-------|
+| OPS243-A Radar | Ball speed, club speed, spin | $249 |
+| Raspberry Pi 5 | Runs everything | $60 |
+| 7" Touchscreen | Shows shot data | $46 |
+| SparkFun SEN-14262 | Impact sound trigger for shot capture | $18 |
+| K-LD7 (×2) + FTDI adapters | Launch angle + club path | $140 |
+| Power supply + accessories | | $27 |
+| **Total** | | **~$540** |
 
-**Optional for spin detection:**
-| Component      | Description                | Cost      |
-| -------------- | -------------------------- | --------- |
-| SparkFun SEN-14262 | Sound detector for rolling buffer trigger | ~$12 |
+> The K-LD7 angle radars are optional. Without them you still get ball speed, club speed, smash factor, spin rate, and estimated carry. See the [full parts list](docs/PARTS.md) for details and links.
 
-See [docs/PARTS.md](docs/PARTS.md) for the full parts list including optional camera module and sound trigger wiring.
+## Getting Started
 
-## Quick Start
+### 1. Get the parts
 
-### Installation
+See the **[Parts List](docs/PARTS.md)** for everything you need with purchase links.
+
+### 2. Wire it up
+
+Follow the **[Sound Trigger Wiring Guide](docs/sound-trigger-wiring.md)** to connect the SEN-14262 to the OPS243-A. The K-LD7 modules connect via USB — no wiring needed.
+
+### 3. Set up the Pi
+
+Flash Raspberry Pi OS (64-bit), plug in the radars, then run the interactive setup:
 
 ```bash
-# Clone the repository
 git clone https://github.com/jewbetcha/openflight.git
 cd openflight
-
-# Run the setup script (installs Python + Node dependencies, builds UI)
-./scripts/setup.sh
+./scripts/setup/setup.sh
 ```
 
-### Basic Usage (CLI)
+The script installs everything and walks you through the one-time hardware
+configuration (radar flash setup, K-LD7 device naming, auto-start) with
+prompts — no manual config editing needed. It's safe to re-run any time.
+See the **[Raspberry Pi Setup Guide](docs/raspberry-pi-setup.md)** for
+details and troubleshooting.
+
+### 4. Hit balls
 
 ```bash
-# Run the launch monitor
-openflight
+# Default: rolling buffer mode with sound trigger
+scripts/start-kiosk.sh
 
-# Specify serial port manually
-openflight --port /dev/ttyACM0
+# With K-LD7 launch-angle geometry defaults
+scripts/start-kiosk.sh --kld7-geometry
 
-# Show live readings
-openflight --live
-
-# Show radar info
-openflight --info
+# Development mode (no hardware)
+scripts/start-kiosk.sh --mock
 ```
 
-### Web UI
+Then open http://localhost:8080 or use the touchscreen.
+
+### 5. Sync to the cloud (optional)
+
+OpenFlight can push your sessions to the **FlightWeb** cloud so you can review
+shots from any device. It's opt-in, and **raw radar data never leaves your
+Pi** — only shot results and session metadata are uploaded (verify with
+`openflight-cloud push --dry-run`).
+
+`setup.sh` offers to enable this and link your Pi. To do it by hand:
 
 ```bash
-# Run the UI server with radar
-openflight-server
-
-# Run in mock mode (no radar needed, for development)
-openflight-server --mock
-
-# Disable camera (auto-enabled if available)
-openflight-server --no-camera
-
-# Use rolling buffer mode for spin detection
-openflight-server --mode rolling-buffer
-
-# Rolling buffer with sound trigger (requires SparkFun SEN-14262)
-openflight-server --mode rolling-buffer --trigger sound-passthrough
+openflight-cloud link       # pair this Pi (enter a short code in your browser)
+openflight-cloud status     # linked? queued? parked?
 ```
 
-Then open http://localhost:8080 in a browser.
+Once linked, sessions sync automatically (on session end and via a ~10-minute
+timer that heals wifi outages). See the **[Cloud Sync Guide](docs/cloud-sync.md)**
+for details.
 
-For kiosk mode on Raspberry Pi (fullscreen):
+### TV Display Mode
 
-```bash
-./scripts/start-kiosk.sh
+OpenFlight also serves a fullscreen-friendly browser display for tablets, TV browsers, or a Chrome tab cast to Chromecast.
+
+1. Start OpenFlight as usual with `scripts/start-kiosk.sh`.
+2. Find the OpenFlight host IP address on your LAN.
+3. Open `http://<openflight-host-ip>:8080/display` from another laptop, tablet, or TV browser.
+4. For Chromecast, open the display page in Chrome and use Chrome's built-in **Cast** feature to cast the tab.
+
+This is browser/tab casting only. OpenFlight does not include native Cast SDK support yet.
+
+## How It Works
+
+### System Architecture
+
+```
+┌─────────────┐  USB/Serial  ┌─────────────┐  Callback   ┌─────────────┐  WebSocket  ┌─────────────┐
+│  OPS243-A   │ ───────────▶ │   Rolling   │ ──────────▶ │   Flask     │ ──────────▶ │   React     │
+│   Radar     │  I/Q buffer  │   Buffer    │  on_shot()  │   Server    │   "shot"    │     UI      │
+└─────────────┘              │   Monitor   │             └─────────────┘             └─────────────┘
+                             └─────────────┘
+                                                               ▲
+┌─────────────┐  USB/Serial                                    │
+│ K-LD7 (×2)  │ ──────────────────── angle data ──────────────┘
+│ Angle Radar │
+└─────────────┘
 ```
 
-See [docs/raspberry-pi-setup.md](docs/raspberry-pi-setup.md) for complete Raspberry Pi setup instructions including auto-start and camera configuration.
+1. **Sound trigger fires** — SEN-14262 detects club impact, triggers OPS243-A HOST_INT
+2. **OPS243-A dumps buffer** — Rolling buffer I/Q data is captured and analyzed for ball speed, club speed, and spin
+3. **K-LD7 correlates** — The server uses the OPS243-A impact timestamp to find the matching ball burst in the K-LD7 ring buffer, extracting launch angle and club path
+4. **Carry computed** — Ball speed + spin + launch angle → carry distance
+5. **UI updates** — Shot data emitted via WebSocket to the React frontend
+
+### Doppler Radar Basics
+
+The OPS243-A transmits a 24 GHz signal. When it bounces off a moving object (the golf ball), the frequency shifts proportionally to the object's speed — this is the Doppler effect. At 24.125 GHz, each 1 mph of speed creates a ~71.7 Hz Doppler shift.
+
+### Positioning
+
+Place the radar **3-5 feet behind the tee**, pointing at the hitting area:
+
+```
+                Ball Flight Direction
+                ======================>
+
+[Tee]  ←--- 3-5 ft ---→  [OPS243-A]  [K-LD7 vertical]  [K-LD7 horizontal]
+```
+
+The K-LD7 modules are positioned near the OPS243-A, one mounted vertically (launch angle) and one horizontally (club path / aim direction).
+
+## Configuration
+
+### Radar Settings for Golf
+
+| Setting        | Value                  | Why                                          |
+| -------------- | ---------------------- | -------------------------------------------- |
+| Mode           | Rolling buffer         | Raw I/Q capture for spin + precise speeds    |
+| Sample Rate    | 30 ksps                | Supports up to ~208 mph ball speed           |
+| Capture        | 4096 I/Q samples       | ~136 ms around impact                        |
+| Trigger        | Sound (SEN-14262)      | ~10 µs hardware latency via HOST_INT         |
+| Min Ball Speed | 35 mph                 | Filter club waggle and slow movements        |
+| DC Mask        | ~15 mph exclusion zone | Reject body movement and environmental noise |
+
+These are applied automatically — the one-time flash configuration is handled
+by the setup script.
 
 ### Python API
 
 ```python
-from openflight import LaunchMonitor
+from openflight.rolling_buffer import RollingBufferMonitor
 
-# Simple usage
-with LaunchMonitor() as monitor:
-    print("Swing when ready...")
-    shot = monitor.wait_for_shot(timeout=60)
-
-    if shot:
-        print(f"Ball Speed: {shot.ball_speed_mph:.1f} mph")
-        print(f"Est. Carry: {shot.estimated_carry_yards:.0f} yards")
-```
-
-```python
-# Continuous monitoring with callbacks
-from openflight import LaunchMonitor
-
-def on_shot(shot):
-    print(f"Shot detected: {shot.ball_speed_mph:.1f} mph")
-
-monitor = LaunchMonitor()
+monitor = RollingBufferMonitor()   # auto-detects the OPS243-A
 monitor.connect()
-monitor.start(shot_callback=on_shot)
+monitor.start()
 
-# ... do other things ...
+print("Swing when ready...")
+shot = monitor.wait_for_shot(timeout=60)
+if shot:
+    print(f"Ball Speed: {shot.ball_speed_mph:.1f} mph")
+    print(f"Est. Carry: {shot.estimated_carry_yards:.0f} yards")
 
-stats = monitor.get_session_stats()
-print(f"Average ball speed: {stats['avg_ball_speed']:.1f} mph")
+monitor.stop()
+monitor.disconnect()
 ```
-
-### Low-Level Radar Access
-
-```python
-from openflight import OPS243Radar
-
-# Direct radar control
-with OPS243Radar() as radar:
-    # Get radar info
-    info = radar.get_info()
-    print(f"Firmware: {info.get('Version')}")
-
-    # Configure for golf
-    radar.configure_for_golf()
-
-    # Read speeds
-    while True:
-        reading = radar.read_speed()
-        if reading:
-            print(f"{reading.speed:.1f} {reading.unit}")
-```
-
-## Setup Guide
-
-### 1. Connect the Radar
-
-Connect the OPS243-A to your computer via USB. The radar will appear as a serial device:
-
-- **Linux/Raspberry Pi**: `/dev/ttyACM0` or `/dev/ttyUSB0`
-- **macOS**: `/dev/tty.usbmodem*`
-- **Windows**: `COM3` (or similar)
-
-### 2. Position the Radar
-
-For best results, position the radar **3-5 feet behind the tee**, pointing at the hitting area. The radar has a 23° beam width.
-
-```
-                    Ball Flight Direction
-                    ======================>
-
-    [Tee]  ←--- 3-5 ft ---→  [OPS243-A Radar]
-                                   ↓
-                            Points at ball
-```
-
-**Important**: The radar measures radial velocity (speed toward/away from sensor). For accurate readings, the ball should travel roughly along the radar's line of sight.
-
-### 3. Run the Monitor
-
-```bash
-openflight
-```
-
-The system will automatically detect the radar, configure it for golf ball detection, and start monitoring.
-
-## How It Works
-
-### Doppler Radar Basics
-
-The OPS243-A transmits a 24 GHz signal. When this signal bounces off a moving object (the golf ball), the frequency shifts proportionally to the object's speed - this is the Doppler effect.
-
-The relationship is:
-
-```
-Speed = (Doppler_Frequency × c) / (2 × Transmit_Frequency)
-```
-
-At 24.125 GHz, each 1 mph of speed creates a ~71.7 Hz Doppler shift.
-
-### Golf Ball Detection
-
-Golf balls are challenging targets for radar due to:
-
-- **Small size**: ~1.68" diameter
-- **Low RCS**: Radar cross-section of ~0.001 m²
-- **High speed**: 100-180+ mph for well-struck shots
-- **Brief detection window**: Ball is in range for < 100ms
-
-The OPS243-A handles this with:
-
-- High transmit power (11 dBm typical)
-- 15 dBi antenna gain
-- 24 GHz frequency (short wavelength suits small objects)
-- Fast sampling (up to 100k samples/sec)
-
-Based on link budget analysis, the OPS243-A should reliably detect golf balls at **4-5 meters (13-16 feet)**, making the 3-5 foot positioning ideal.
-
-### System Architecture
-
-The data flows from radar to UI like this:
-
-```
-┌─────────────┐  USB/Serial  ┌─────────────┐  Callback   ┌─────────────┐  WebSocket  ┌─────────────┐
-│  OPS243-A   │ ───────────▶ │   Launch    │ ──────────▶ │   Flask     │ ──────────▶ │   React     │
-│   Radar     │  Speed data  │   Monitor   │  on_shot()  │   Server    │   "shot"    │     UI      │
-└─────────────┘              └─────────────┘             └─────────────┘             └─────────────┘
-```
-
-1. **Radar streams data** - The OPS243-A continuously sends speed readings over USB serial whenever it detects motion
-
-2. **LaunchMonitor processes readings** - A background thread reads serial data, accumulates readings, and when there's a gap (no readings for 0.5s), analyzes the data to create a `Shot` object with ball speed, club speed, and smash factor
-
-3. **Callback fires** - When a shot is detected, the callback function registered via `monitor.start(shot_callback=...)` is called with the `Shot` object
-
-4. **Server broadcasts to clients** - The Flask server's callback converts the shot to JSON and emits it to all connected browsers via WebSocket
-
-5. **React updates UI** - The `useSocket` hook receives the event and updates state, triggering a re-render with the new shot data
-
-This callback pattern keeps the components decoupled - `LaunchMonitor` doesn't know about Flask or WebSockets, it just calls whatever function you give it.
-
-## Configuration
-
-The radar can be configured via API commands:
-
-```python
-from openflight import OPS243Radar, SpeedUnit, Direction
-
-radar = OPS243Radar()
-radar.connect()
-
-# Set units to MPH
-radar.set_units(SpeedUnit.MPH)
-
-# Increase sample rate for faster balls (up to 139 mph at 20kHz)
-radar.set_sample_rate(20000)
-
-# Filter out slow movements
-radar.set_min_speed_filter(20)  # Ignore < 20 mph
-
-# Only detect outbound (ball going away)
-radar.set_direction_filter(Direction.OUTBOUND)
-
-# Save to persistent memory
-radar.save_config()
-```
-
-### Key Settings for Golf
-
-| Setting     | Value    | Why                         |
-| ----------- | -------- | --------------------------- |
-| Sample Rate | 20 kHz   | Supports up to ~139 mph     |
-| Buffer Size | 512      | Faster updates (~10-15 Hz)  |
-| Min Speed   | 10 mph   | Filter slow movements       |
-| Direction   | Outbound | Ball moving away from radar |
-| Power       | Max (0)  | Best detection range        |
 
 ## Limitations
 
-### What OpenFlight Does NOT Measure (Yet)
-
-- **Side Spin / Curve**: Requires multiple sensors or camera
-
-Note: **Launch Angle** is available with the optional camera module. See [Camera Setup](#camera-calibration). **Spin Rate** is available experimentally via rolling buffer mode (see [docs/rolling_buffer_spin_detection.md](docs/rolling_buffer_spin_detection.md)).
-
-### Accuracy Considerations
-
-- **Distance estimates are rough**: Without launch angle and spin, carry distance is estimated using a simplified model (~2.5 yards per mph of ball speed)
 - **Cosine error**: If ball doesn't travel directly toward/away from radar, measured speed will be slightly lower than actual
-- **Detection is probabilistic**: Very fast shots with weak returns may be missed
+- **Spin detection**: The hardest radar measurement, especially indoors — the usable signal window ends when the ball hits the net, and short windows can't resolve low spin (commercial radar units have the same constraint and fall back to estimated spin indoors). Low driver-band readings (≤~3100 RPM) are reported at reduced confidence. When spin isn't measured, carry falls back to club-typical spin values. Improving this is an active focus.
+- **K-LD7 speed aliasing**: The K-LD7 max speed is 62 mph, so it's used only for angle/distance, not speed
 
-## Troubleshooting
+### Ball Markings
 
-### "No OPS243 radar found"
+Reflective markings (aluminum stickers, painted dots) noticeably improve K-LD7 launch-angle extraction — the stronger return gives multi-frame tracking, higher SNR, and more confident angles. However, a specular patch produces a pulsed, non-sinusoidal amplitude modulation that the spin detector can't interpret as seam modulation, so measured spin degrades (typically locks to the top of the valid frequency band with low confidence). Low-confidence spin automatically falls back to club-typical values in the ballistics model, so the net effect of marking a ball is better angles with no worse carry estimates. A thin painted stripe (rather than a patch) is a reasonable middle ground if you want both — it rotates through the beam more like a seam.
 
-1. Check USB connection
-2. Try a different USB cable
-3. Check if device appears: `ls /dev/tty*` (Linux/Mac)
-4. Try specifying port manually: `openflight --port /dev/ttyACM0`
+## Hardware Diagnostic
 
-### Weak or No Detection
+To verify every component of your build in one shot:
 
-1. Move radar closer to hitting area (try 3 feet)
-2. Ensure radar is pointing at ball flight path
-3. Check for obstructions
-4. Try increasing transmit power: `radar.set_transmit_power(0)`
+```bash
+uv run python scripts/hardware-test/diagnose.py
+```
 
-### Erratic Readings
+The diagnostic walks through 6 checks:
+1. OPS243 connectivity
+2. OPS243 rolling buffer mode persistence
+3. OPS243 software trigger
+4. K-LD7 vertical (launch angle)
+5. K-LD7 horizontal (aim direction, optional)
+6. Sound trigger end-to-end (interactive — prompts you to clap near the sensor)
 
-1. Increase minimum speed filter to reduce noise
-2. Increase magnitude filter to require stronger signals
-3. Ensure stable mounting (vibration causes false readings)
+Missing optional hardware (like the horizontal K-LD7) is reported as a skip rather than a failure. Pass `--require-all` to fail on skips, or `--no-interactive` to skip the sound-trigger prompt in unattended runs.
 
 ## Project Structure
 
 ```
 openflight/
 ├── src/openflight/
-│   ├── __init__.py
 │   ├── ops243.py              # OPS243-A radar driver
-│   ├── launch_monitor.py      # Main launch monitor & shot detection
-│   ├── server.py              # Flask-SocketIO server for web UI
+│   ├── launch_monitor.py      # Shot detection & club/ball separation
+│   ├── server.py              # Flask server, K-LD7 correlation, carry
 │   ├── session_logger.py      # JSONL session logging
-│   ├── camera_tracker.py      # Ball tracking (Hough circles + ByteTrack)
-│   ├── camera/                # Camera subsystem
-│   │   ├── capture.py         # Frame capture utilities
-│   │   ├── detector.py        # Ball detector (Hough circles)
-│   │   ├── launch_angle.py    # Launch angle calculation
-│   │   └── tracker.py         # Tracking logic
-│   ├── streaming/             # Real-time I/Q processing
-│   │   ├── processor.py       # FFT processing pipeline
-│   │   └── cfar.py            # 2D CFAR noise rejection
+│   ├── kld7/                  # K-LD7 angle radar
+│   │   ├── radc.py            # FFT, phase interferometry, angle extraction
+│   │   ├── tracker.py         # Ring buffer, shot correlation
+│   │   ├── geometry.py        # Launch-angle trajectory fitting
+│   │   └── types.py           # Data types
 │   └── rolling_buffer/        # Spin rate detection
 │       ├── monitor.py         # Rolling buffer monitor
 │       ├── processor.py       # I/Q processing for spin
 │       ├── trigger.py         # Trigger strategies
 │       └── types.py           # Data types
 ├── ui/                        # React frontend
-│   ├── src/
-│   │   ├── components/        # React components
-│   │   ├── hooks/             # Custom hooks (WebSocket)
-│   │   └── App.tsx            # Main app
-│   └── package.json
 ├── scripts/                   # Utility & setup scripts
 ├── docs/                      # Documentation
-├── pyproject.toml
-└── README.md
+└── pyproject.toml
 ```
 
 ## Contributing
@@ -348,82 +244,33 @@ Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 Areas of interest:
 
-- **Better distance models**: Improve carry estimates with more physics
-- **Improved spin detection**: Increase rolling buffer spin detection reliability beyond 50-60%
+- **Better spin detection**: A dechirped Doppler-sideband estimator is in development (`scripts/analysis/replay_spin_dechirp.py`) — help validating it against launch-monitor truth data is especially welcome
+- **K-LD7 signal processing**: Improve ball detection from sparse radar frames
 - **Mobile app**: Bluetooth connection to phone
-- **Hardware acceleration**: Optimize detection for Hailo/Coral accelerators
-
-### Camera Calibration
-
-If you have the optional camera module for launch angle detection, first install the camera dependencies:
-
-```bash
-# Install camera support (OpenCV, NumPy, picamera2)
-uv pip install -e ".[camera]"
-```
-
-Then use the calibration script to tune detection settings:
-
-```bash
-# Live view with ball detection overlay
-python scripts/calibrate_camera.py
-
-# Without detection overlay (just camera feed)
-python scripts/calibrate_camera.py --no-detect
-
-# Mock mode (no camera hardware, uses synthetic frames)
-python scripts/calibrate_camera.py --mock
-
-# Adjust camera settings
-python scripts/calibrate_camera.py --exposure 2000 --gain 4.0 --threshold 200
-```
-
-**Keyboard controls during calibration:**
-| Key | Action |
-|-----|--------|
-| `q` | Quit |
-| `s` | Save current frame |
-| `t` | Toggle threshold view |
-| `d` | Toggle detection overlay |
-| `+`/`-` | Adjust brightness threshold |
-| `[`/`]` | Adjust minimum radius |
-| `{`/`}` | Adjust maximum radius |
-
-The script will display final settings when you exit - use these values to configure detection in your setup.
-
-The default detection uses Hough circle transform, tunable via `--hough-param2` (lower = more sensitive, default 27). YOLO models can optionally be used via `--camera-model`. For YOLO optimization, see [docs/yolo-performance-tuning.md](docs/yolo-performance-tuning.md).
 
 ### Running Tests
 
 ```bash
-# Install dev dependencies
-uv pip install -e ".[ui]"
-uv pip install pytest
-
-# Run tests
-pytest tests/ -v
+uv run pytest tests/ -v
 ```
-
-### Contributing Guidelines
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines. Quick summary:
-
-- **Tests required**: Run `pytest tests/ -v` before submitting a PR
-- **Code quality**: Run `pylint src/openflight/` (score 9+)
-- **UI changes**: Run `cd ui && npm run build` to verify
 
 ## Documentation
 
-- [Raspberry Pi Setup Guide](docs/raspberry-pi-setup.md) - Complete Pi 5 setup with touchscreen and camera
-- [Parts List](docs/PARTS.md) - Full hardware requirements
-- [Rolling Buffer & Spin Detection](docs/rolling_buffer_spin_detection.md) - Spin rate measurement via I/Q analysis
-- [YOLO Performance Tuning](docs/yolo-performance-tuning.md) - Optimize YOLO ball detection FPS
-- [Contributing Guide](CONTRIBUTING.md) - How to contribute
-- [Changelog](docs/CHANGELOG.md) - Version history
+- **[Parts List](docs/PARTS.md)** — What to buy
+- **[Sound Trigger Wiring](docs/sound-trigger-wiring.md)** — How to wire the sound trigger
+- **[Raspberry Pi Setup](docs/raspberry-pi-setup.md)** — Full setup guide
+- **[Cloud Sync](docs/cloud-sync.md)** — Push filtered sessions to FlightWeb
+- **[Rolling Buffer & Spin Detection](docs/rolling_buffer_spin_detection.md)** — Spin measurement details
+- **[Dechirped-Sideband Spin Replay](docs/spin-dechirp-replay.md)** — Next-gen spin estimator test bench
+- **[K-LD7 Ball Detection Theory](docs/kld7-ball-detection-theory.md)** — How angle detection works
+- **[K-LD7 Session Review](docs/kld7-session-review.md)** — Offline review workflow for session JSONL files
+- **[Observability & Log Shipping](docs/observability.md)** — Ship logs to Grafana Cloud
+- **[Contributing Guide](CONTRIBUTING.md)** — How to contribute
+- **[Changelog](docs/CHANGELOG.md)** — Version history
 
 ## License
 
-MIT License - see LICENSE file.
+GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later) - see LICENSE file.
 
 ## Acknowledgments
 

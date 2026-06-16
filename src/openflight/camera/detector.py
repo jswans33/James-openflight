@@ -6,11 +6,12 @@ viewed from behind the tee.
 """
 
 from dataclasses import dataclass
-from typing import Optional, List, Tuple
+from typing import List, Optional, Tuple
 
 try:
     import cv2
     import numpy as np
+
     CV2_AVAILABLE = True
 except ImportError:
     CV2_AVAILABLE = False
@@ -21,6 +22,7 @@ from .capture import CapturedFrame
 @dataclass
 class DetectedBall:
     """A detected golf ball in a frame."""
+
     # Center position in pixels
     x: float
     y: float
@@ -43,27 +45,28 @@ class DetectedBall:
     @property
     def area(self) -> float:
         """Approximate ball area in pixels."""
-        return 3.14159 * self.radius ** 2
+        return 3.14159 * self.radius**2
 
 
 @dataclass
 class DetectorConfig:
     """Configuration for ball detection."""
+
     # Brightness threshold for IR ball (0-255)
     brightness_threshold: int = 200
 
     # Expected ball radius range in pixels (at various distances)
-    min_radius: int = 5      # Ball far away
-    max_radius: int = 50     # Ball close to camera
+    min_radius: int = 5  # Ball far away
+    max_radius: int = 50  # Ball close to camera
 
     # Circle detection parameters
-    hough_dp: float = 1.2           # Inverse ratio of accumulator resolution
-    hough_min_dist: int = 50        # Min distance between detected circles
-    hough_param1: int = 50          # Canny edge detection threshold
-    hough_param2: int = 20          # Circle detection threshold (lower = more circles)
+    hough_dp: float = 1.2  # Inverse ratio of accumulator resolution
+    hough_min_dist: int = 50  # Min distance between detected circles
+    hough_param1: int = 50  # Canny edge detection threshold
+    hough_param2: int = 20  # Circle detection threshold (lower = more circles)
 
     # Filtering
-    min_confidence: float = 0.5     # Minimum confidence to accept detection
+    min_confidence: float = 0.5  # Minimum confidence to accept detection
 
 
 class BallDetector:
@@ -89,9 +92,7 @@ class BallDetector:
             config: Detection configuration, uses defaults if None
         """
         if not CV2_AVAILABLE:
-            raise RuntimeError(
-                "OpenCV not available. Install with: pip install opencv-python"
-            )
+            raise RuntimeError("OpenCV not available. Install with: pip install opencv-python")
         self.config = config or DetectorConfig()
 
     def detect(self, frame: CapturedFrame) -> Optional[DetectedBall]:
@@ -111,12 +112,7 @@ class BallDetector:
             gray = frame.data
 
         # Apply threshold to isolate bright ball (IR illuminated)
-        _, thresh = cv2.threshold(
-            gray,
-            self.config.brightness_threshold,
-            255,
-            cv2.THRESH_BINARY
-        )
+        _, thresh = cv2.threshold(gray, self.config.brightness_threshold, 255, cv2.THRESH_BINARY)
 
         # Apply slight blur to reduce noise
         blurred = cv2.GaussianBlur(thresh, (5, 5), 0)
@@ -130,7 +126,7 @@ class BallDetector:
             param1=self.config.hough_param1,
             param2=self.config.hough_param2,
             minRadius=self.config.min_radius,
-            maxRadius=self.config.max_radius
+            maxRadius=self.config.max_radius,
         )
 
         if circles is None:
@@ -158,7 +154,7 @@ class BallDetector:
             radius=float(r),
             confidence=best_confidence,
             frame_number=frame.frame_number,
-            timestamp=frame.timestamp
+            timestamp=frame.timestamp,
         )
 
     def _calculate_confidence(self, gray: "np.ndarray", x: int, y: int, r: int) -> float:
@@ -214,9 +210,7 @@ class BallDetector:
         return [self.detect(frame) for frame in frames]
 
     def detect_with_tracking(
-        self,
-        frames: List[CapturedFrame],
-        expected_direction: str = "up_and_away"
+        self, frames: List[CapturedFrame], expected_direction: str = "up_and_away"
     ) -> List[Optional[DetectedBall]]:
         """
         Detect ball with trajectory-based tracking.
@@ -244,8 +238,7 @@ class BallDetector:
                     # Detection doesn't match expected trajectory
                     # Try to find ball in predicted region
                     detection = self._detect_in_region(
-                        frame,
-                        self._predict_position(prev_detection, expected_direction)
+                        frame, self._predict_position(prev_detection, expected_direction)
                     )
 
             detections.append(detection)
@@ -254,12 +247,7 @@ class BallDetector:
 
         return detections
 
-    def _validate_trajectory(
-        self,
-        prev: DetectedBall,
-        curr: DetectedBall,
-        direction: str
-    ) -> bool:
+    def _validate_trajectory(self, prev: DetectedBall, curr: DetectedBall, direction: str) -> bool:
         """Validate that current detection follows expected trajectory."""
         if direction == "up_and_away":
             # Ball should move up (y decreases in image coords)
@@ -271,11 +259,7 @@ class BallDetector:
 
         return True
 
-    def _predict_position(
-        self,
-        prev: DetectedBall,
-        direction: str
-    ) -> Tuple[int, int, int, int]:
+    def _predict_position(self, prev: DetectedBall, direction: str) -> Tuple[int, int, int, int]:
         """
         Predict search region for next frame.
 
@@ -292,27 +276,23 @@ class BallDetector:
                 max(0, pred_x - search_size // 2),
                 max(0, pred_y - search_size // 2),
                 search_size,
-                search_size
+                search_size,
             )
 
         return (0, 0, 640, 480)
 
     def _detect_in_region(
-        self,
-        frame: CapturedFrame,
-        region: Tuple[int, int, int, int]
+        self, frame: CapturedFrame, region: Tuple[int, int, int, int]
     ) -> Optional[DetectedBall]:
         """Detect ball within a specific region of the frame."""
         x, y, w, h = region
 
         # Extract region
-        roi = frame.data[y:y+h, x:x+w]
+        roi = frame.data[y : y + h, x : x + w]
 
         # Create temporary frame for ROI
         roi_frame = CapturedFrame(
-            data=roi,
-            timestamp=frame.timestamp,
-            frame_number=frame.frame_number
+            data=roi, timestamp=frame.timestamp, frame_number=frame.frame_number
         )
 
         detection = self.detect(roi_frame)

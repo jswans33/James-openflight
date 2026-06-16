@@ -1,73 +1,93 @@
-# React + TypeScript + Vite
+# OpenFlight UI
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The OpenFlight dashboard: a React + TypeScript + Vite app that connects to the
+backend over `socket.io` and renders live shot data, session stats, camera ball
+detection, and a screen-mounted display mode.
 
-Currently, two official plugins are available:
+This README covers frontend development. For the hardware, the radar pipeline,
+and how the whole system fits together, see the [root README](../README.md).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Quick start
 
-## React Compiler
+You need Node 20+ and a running OpenFlight backend. To start a backend without
+hardware, run `scripts/start-kiosk.sh --mock` from the repo root (see the
+[root README](../README.md#getting-started)).
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+The dev server runs on port `5173`. When served there, the UI assumes the
+backend is at `http://localhost:8080`. Point it elsewhere with
+`VITE_SOCKET_URL`:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+VITE_SOCKET_URL="http://localhost:8081" npm run dev
 ```
+
+## Scripts
+
+| Script                 | Description                                  |
+| ---------------------- | -------------------------------------------- |
+| `npm run dev`          | Dev server with hot reload                   |
+| `npm run build`        | Type-check and build the production bundle   |
+| `npm run preview`      | Serve the production build locally           |
+| `npm run lint`         | ESLint                                       |
+| `npm run test`         | Vitest unit tests                            |
+| `npm run format`       | Format `src/` with Prettier                  |
+| `npm run format:check` | Check formatting without writing             |
+
+## How the UI connects
+
+The app is entirely client-side. Everything flows through one socket connection.
+
+- **`utils/serverOrigin.ts`** resolves the backend origin: `VITE_SOCKET_URL` if
+  set, otherwise `http://localhost:8080` when running on the Vite dev port
+  (`5173`), otherwise the page's own origin (the production case, where the
+  backend serves the built UI).
+- **`hooks/useSocket.ts`** owns the connection. It receives events like `shot`,
+  `session_state`, `camera_status`, `ball_detection`, and `trigger_status`, and
+  sends commands like `set_club`, `clear_session`, `simulate_shot`, and
+  `toggle_camera`. It's the source of truth for the event contract — read it
+  before assuming what the backend emits.
+- **State** lives in `state/` (shot history and unit preferences) via React
+  context providers.
+- **Shutdown** posts to `/api/shutdown` to stop the connected backend.
+
+**Display mode** lives at `/display`: a compact, fullscreen-friendly dashboard
+for mounted screens and TVs. The [root README](../README.md#tv-display-mode)
+covers casting it.
+
+**Launch Daddy** is a hidden mode toggled by a tap area in the header. When on,
+new shots can fire an animated overlay.
+
+## Project layout
+
+A few files do most of the work. This is illustrative, not exhaustive —
+components carry co-located `.css` and `.test.tsx` files.
+
+```text
+src/
+  App.tsx                 # navigation, view selection, display routing
+  main.tsx                # entry point
+  hooks/useSocket.ts      # socket connection, events, backend commands
+  utils/serverOrigin.ts   # backend origin resolution
+  state/                  # shot history + unit preference context
+  components/             # CameraFeed, ShotDisplay, StatsView, DebugPanel, …
+    LaunchDaddy/          # the hidden overlay mode
+```
+
+## Troubleshooting
+
+**Socket won't connect.** Confirm the backend is running and reachable from the
+browser. If it isn't on the default port, set `VITE_SOCKET_URL`. Connection logs
+come from `hooks/useSocket.ts`.
+
+**Build fails.** `npm run build` surfaces TypeScript and bundling errors; `npm
+run lint` catches the rest.
+
+---
+
+Contributing guidelines (setup, code quality, PRs) live in
+[CONTRIBUTING.md](../CONTRIBUTING.md).

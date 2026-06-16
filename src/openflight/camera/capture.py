@@ -5,22 +5,21 @@ Designed for Raspberry Pi HQ Camera with IR illumination,
 capturing frames at 120fps to track ball trajectory.
 """
 
-import time
 import threading
+import time
 from dataclasses import dataclass, field
-from typing import Optional, List, Callable
-from datetime import datetime
+from typing import List, Optional
 
 try:
     from picamera2 import Picamera2
-    from picamera2.encoders import Encoder
-    from picamera2.outputs import CircularOutput
+
     PICAMERA_AVAILABLE = True
 except ImportError:
     PICAMERA_AVAILABLE = False
 
 try:
     import numpy as np
+
     NUMPY_AVAILABLE = True
 except ImportError:
     NUMPY_AVAILABLE = False
@@ -29,6 +28,7 @@ except ImportError:
 @dataclass
 class CaptureConfig:
     """Configuration for camera capture."""
+
     # Resolution - lower = faster framerate
     width: int = 640
     height: int = 480
@@ -44,12 +44,13 @@ class CaptureConfig:
 
     # Exposure settings for IR capture
     exposure_time_us: int = 2000  # 2ms - fast to reduce motion blur
-    analogue_gain: float = 4.0    # Boost for IR sensitivity
+    analogue_gain: float = 4.0  # Boost for IR sensitivity
 
 
 @dataclass
 class CapturedFrame:
     """A single captured frame with metadata."""
+
     data: "np.ndarray"
     timestamp: float
     frame_number: int
@@ -58,6 +59,7 @@ class CapturedFrame:
 @dataclass
 class CaptureResult:
     """Result of a triggered capture sequence."""
+
     frames: List[CapturedFrame] = field(default_factory=list)
     trigger_time: float = 0
     trigger_frame_index: int = 0
@@ -65,12 +67,12 @@ class CaptureResult:
     @property
     def pre_trigger_frames(self) -> List[CapturedFrame]:
         """Frames captured before the trigger."""
-        return self.frames[:self.trigger_frame_index]
+        return self.frames[: self.trigger_frame_index]
 
     @property
     def post_trigger_frames(self) -> List[CapturedFrame]:
         """Frames captured after the trigger."""
-        return self.frames[self.trigger_frame_index:]
+        return self.frames[self.trigger_frame_index :]
 
 
 class CameraCapture:
@@ -117,33 +119,28 @@ class CameraCapture:
             True if started successfully
         """
         if not PICAMERA_AVAILABLE:
-            raise RuntimeError(
-                "picamera2 not available. Install with: pip install picamera2"
-            )
+            raise RuntimeError("picamera2 not available. Install with: pip install picamera2")
 
         try:
             self._camera = Picamera2()
 
             # Configure for high-speed capture
             video_config = self._camera.create_video_configuration(
-                main={"size": (self.config.width, self.config.height),
-                      "format": "RGB888"},
+                main={"size": (self.config.width, self.config.height), "format": "RGB888"},
                 controls={
                     "FrameRate": self.config.framerate,
                     "ExposureTime": self.config.exposure_time_us,
                     "AnalogueGain": self.config.analogue_gain,
                     # Disable auto-exposure for consistent frames
                     "AeEnable": False,
-                }
+                },
             )
             self._camera.configure(video_config)
             self._camera.start()
 
             # Start capture thread
             self._running = True
-            self._capture_thread = threading.Thread(
-                target=self._capture_loop, daemon=True
-            )
+            self._capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
             self._capture_thread.start()
 
             return True
@@ -173,9 +170,7 @@ class CameraCapture:
                 timestamp = time.time()
 
                 frame = CapturedFrame(
-                    data=frame_data,
-                    timestamp=timestamp,
-                    frame_number=self._frame_count
+                    data=frame_data, timestamp=timestamp, frame_number=self._frame_count
                 )
                 self._frame_count += 1
 
@@ -220,9 +215,7 @@ class CameraCapture:
                 break
 
         return CaptureResult(
-            frames=frames,
-            trigger_time=trigger_time,
-            trigger_frame_index=trigger_frame_index
+            frames=frames, trigger_time=trigger_time, trigger_frame_index=trigger_frame_index
         )
 
     def capture_single(self) -> Optional[CapturedFrame]:
@@ -236,11 +229,7 @@ class CameraCapture:
             return None
 
         frame_data = self._camera.capture_array()
-        return CapturedFrame(
-            data=frame_data,
-            timestamp=time.time(),
-            frame_number=self._frame_count
-        )
+        return CapturedFrame(data=frame_data, timestamp=time.time(), frame_number=self._frame_count)
 
     @property
     def is_running(self) -> bool:
@@ -283,15 +272,11 @@ class MockCameraCapture:
 
         frames = []
         trigger_time = time.time()
-        total_frames = (self.config.pre_trigger_frames +
-                        self.config.post_trigger_frames)
+        total_frames = self.config.pre_trigger_frames + self.config.post_trigger_frames
 
         for i in range(total_frames):
             # Create synthetic frame with a "ball" that moves
-            frame_data = np.zeros(
-                (self.config.height, self.config.width, 3),
-                dtype=np.uint8
-            )
+            frame_data = np.zeros((self.config.height, self.config.width, 3), dtype=np.uint8)
 
             # Simulate ball moving up and away (shrinking)
             if i >= self.config.pre_trigger_frames:
@@ -303,23 +288,23 @@ class MockCameraCapture:
 
                 if 0 <= cy < self.config.height and radius > 0:
                     # Draw white circle (simulating IR-lit ball)
-                    y, x = np.ogrid[:self.config.height, :self.config.width]
-                    mask = (x - cx)**2 + (y - cy)**2 <= radius**2
+                    y, x = np.ogrid[: self.config.height, : self.config.width]
+                    mask = (x - cx) ** 2 + (y - cy) ** 2 <= radius**2
                     frame_data[mask] = [255, 255, 255]
 
             timestamp = trigger_time + (i - self.config.pre_trigger_frames) / self.config.framerate
-            frames.append(CapturedFrame(
-                data=frame_data,
-                timestamp=timestamp,
-                frame_number=self._frame_count + i
-            ))
+            frames.append(
+                CapturedFrame(
+                    data=frame_data, timestamp=timestamp, frame_number=self._frame_count + i
+                )
+            )
 
         self._frame_count += total_frames
 
         return CaptureResult(
             frames=frames,
             trigger_time=trigger_time,
-            trigger_frame_index=self.config.pre_trigger_frames
+            trigger_frame_index=self.config.pre_trigger_frames,
         )
 
     def capture_single(self) -> Optional[CapturedFrame]:
@@ -327,15 +312,8 @@ class MockCameraCapture:
         if not NUMPY_AVAILABLE:
             return None
 
-        frame_data = np.zeros(
-            (self.config.height, self.config.width, 3),
-            dtype=np.uint8
-        )
-        return CapturedFrame(
-            data=frame_data,
-            timestamp=time.time(),
-            frame_number=self._frame_count
-        )
+        frame_data = np.zeros((self.config.height, self.config.width, 3), dtype=np.uint8)
+        return CapturedFrame(data=frame_data, timestamp=time.time(), frame_number=self._frame_count)
 
     @property
     def is_running(self) -> bool:

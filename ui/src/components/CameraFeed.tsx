@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { CameraStatus } from '../hooks/useSocket';
+import { getServerOrigin } from '../utils/serverOrigin';
 import './CameraFeed.css';
 
 interface CameraFeedProps {
@@ -8,15 +9,9 @@ interface CameraFeedProps {
   onToggleStream: () => void;
 }
 
-const STREAM_URL = import.meta.env.VITE_SOCKET_URL
-  ? `${import.meta.env.VITE_SOCKET_URL}/camera/stream`
-  : 'http://localhost:8080/camera/stream';
+const STREAM_URL = `${getServerOrigin()}/camera/stream`;
 
-export function CameraFeed({
-  cameraStatus,
-  onToggleCamera,
-  onToggleStream,
-}: CameraFeedProps) {
+export function CameraFeed({ cameraStatus, onToggleCamera, onToggleStream }: CameraFeedProps) {
   const [streamError, setStreamError] = useState(false);
   const [prevStreaming, setPrevStreaming] = useState(false);
   const { available, enabled, streaming, ball_detected, ball_confidence } = cameraStatus;
@@ -76,9 +71,7 @@ export function CameraFeed({
             <h3>Stream Paused</h3>
             <p>Ball detection is active. Click "Start Stream" to view live feed.</p>
             <div className={`camera-feed__detection ${ball_detected ? 'camera-feed__detection--detected' : ''}`}>
-              {ball_detected
-                ? `Ball Detected (${Math.round(ball_confidence * 100)}%)`
-                : 'No Ball Detected'}
+              {ball_detected ? `Ball Detected (${Math.round(ball_confidence * 100)}%)` : 'No Ball Detected'}
             </div>
           </div>
         ) : streamError ? (
@@ -100,9 +93,7 @@ export function CameraFeed({
             />
             <div className="camera-feed__overlay">
               <div className={`camera-feed__status ${ball_detected ? 'camera-feed__status--detected' : ''}`}>
-                {ball_detected
-                  ? `Ball: ${Math.round(ball_confidence * 100)}%`
-                  : 'Searching...'}
+                {ball_detected ? `Ball: ${Math.round(ball_confidence * 100)}%` : 'Searching...'}
               </div>
             </div>
           </div>

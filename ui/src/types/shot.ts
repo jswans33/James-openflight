@@ -7,10 +7,14 @@ export interface Shot {
   club: string;
   timestamp: string;
   peak_magnitude: number | null;
-  // Camera-based launch angle data
+  // Launch angle data (from K-LD7 radar, camera, or estimation)
   launch_angle_vertical: number | null;
   launch_angle_horizontal: number | null;
   launch_angle_confidence: number | null;
+  angle_source: 'radar' | 'camera' | 'estimated' | null;
+  club_angle_deg: number | null;
+  club_path_deg: number | null;
+  spin_axis_deg: number | null;
   // Rolling buffer mode spin data
   spin_rpm: number | null;
   spin_confidence: number | null;
@@ -30,7 +34,7 @@ export interface SessionStats {
   // Rolling buffer mode spin stats
   avg_spin_rpm?: number | null;
   spin_detection_rate?: number;
-  mode?: 'streaming' | 'rolling-buffer';
+  mode?: 'rolling-buffer';
 }
 
 export interface SessionState {
@@ -62,7 +66,7 @@ export interface TriggerDiagnostic {
 }
 
 export interface TriggerStatus {
-  mode: 'streaming' | 'rolling-buffer' | 'mock';
+  mode: 'rolling-buffer' | 'mock';
   trigger_type: string | null;
   radar_connected: boolean;
   radar_port: string | null;

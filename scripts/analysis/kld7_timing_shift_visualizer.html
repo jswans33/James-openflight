@@ -1,0 +1,1602 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>K-LD7 Timing Shift Visualizer</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --line: #d7dce5;
+      --text: #172033;
+      --muted: #5e6a7d;
+      --blue: #1d4ed8;
+      --cyan: #0786a8;
+      --violet: #7c3aed;
+      --red: #dc2626;
+      --green: #047857;
+      --orange: #b45309;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: 360px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    aside {
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      padding: 18px;
+      overflow: auto;
+    }
+
+    main {
+      min-width: 0;
+      padding: 18px;
+      display: grid;
+      grid-template-rows: auto minmax(360px, 1fr) auto;
+      gap: 12px;
+    }
+
+    h1 {
+      margin: 0 0 14px;
+      font-size: 18px;
+      line-height: 1.25;
+    }
+
+    h2 {
+      margin: 18px 0 8px;
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 9px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    input,
+    select {
+      width: 100%;
+      margin-top: 4px;
+      padding: 8px 9px;
+      border: 1px solid #cfd6e2;
+      border-radius: 6px;
+      color: var(--text);
+      background: #fff;
+      font: inherit;
+      font-size: 13px;
+    }
+
+    input[type="file"] {
+      padding: 7px;
+    }
+
+    .data-status {
+      min-height: 18px;
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .frame-list {
+      display: grid;
+      gap: 6px;
+      max-height: 230px;
+      overflow: auto;
+      padding-right: 2px;
+    }
+
+    .frame-row {
+      display: grid;
+      grid-template-columns: 42px 1fr;
+      gap: 8px;
+      height: auto;
+      padding: 8px;
+      border-radius: 7px;
+      text-align: left;
+      font-weight: 600;
+    }
+
+    .frame-row span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.35;
+    }
+
+    .frame-row.selected {
+      border-color: #60a5fa;
+      background: #eff6ff;
+    }
+
+    .frame-row.locked {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .grid2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .frame-box {
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcff;
+    }
+
+    .graph-shift {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      z-index: 4;
+      display: grid;
+      grid-template-columns: 34px 72px 34px;
+      gap: 6px;
+      align-items: end;
+      padding: 7px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.95);
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+    }
+
+    .graph-shift label {
+      margin: 0;
+      font-size: 10px;
+      line-height: 1.1;
+      text-align: center;
+    }
+
+    .graph-shift input {
+      margin-top: 3px;
+      padding: 5px 6px;
+      font-size: 12px;
+      text-align: center;
+    }
+
+    .graph-shift button {
+      height: 30px;
+      border-radius: 6px;
+    }
+
+    .range-toggle {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin: 0;
+      padding-top: 2px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1;
+      text-align: left;
+    }
+
+    .range-toggle input {
+      width: auto;
+      margin: 0;
+    }
+
+    .inline-toggle {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.2;
+    }
+
+    .inline-toggle input {
+      width: auto;
+      margin: 0;
+    }
+
+    button {
+      height: 36px;
+      border: 1px solid #cfd6e2;
+      border-radius: 7px;
+      background: #fff;
+      color: var(--text);
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #eef4ff;
+      border-color: #9ebcff;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      width: 100%;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+      width: 100%;
+    }
+
+    .metric {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+
+    .metric.primary-result {
+      border: 2px solid var(--blue);
+      background: #eff6ff;
+      box-shadow: 0 8px 22px rgba(29, 78, 216, 0.16);
+    }
+
+    .metric.primary-result .label {
+      color: var(--blue);
+      font-weight: 800;
+    }
+
+    .metric.primary-result .value {
+      color: var(--blue);
+    }
+
+    .metric .label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .legend {
+      flex: 0 0 auto;
+      display: inline-block;
+    }
+
+    .legend-line {
+      width: 24px;
+      height: 0;
+      border-top: 3px solid currentColor;
+    }
+
+    .legend-dashed {
+      border-top-style: dashed;
+    }
+
+    .legend-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .legend-diamond {
+      width: 10px;
+      height: 10px;
+      border: 2px solid currentColor;
+      background: #fff7ed;
+      transform: rotate(45deg);
+    }
+
+    .legend-red {
+      color: var(--red);
+    }
+
+    .legend-green {
+      color: var(--green);
+    }
+
+    .legend-orange {
+      color: var(--orange);
+    }
+
+    .legend-violet {
+      color: var(--violet);
+    }
+
+    .legend-cyan {
+      color: var(--cyan);
+    }
+
+    .legend-pair {
+      display: inline-flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .metric .value {
+      margin-top: 3px;
+      font-size: 18px;
+      font-weight: 800;
+      line-height: 1.2;
+    }
+
+    .metric .sub {
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.3;
+    }
+
+    .canvas-wrap {
+      position: relative;
+      min-height: 360px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .status {
+      padding: 9px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .status strong {
+      color: var(--text);
+    }
+
+    @media (max-width: 900px) {
+      .app {
+        grid-template-columns: 1fr;
+      }
+
+      aside {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside>
+      <h1>K-LD7 Timing Shift Visualizer</h1>
+
+      <h2>Data</h2>
+      <label>
+        Upload frames.csv
+        <input id="csvFile" type="file" accept=".csv,text/csv">
+      </label>
+      <label>
+        Auto CSV URL
+        <input id="csvUrl" type="text" placeholder="frames_live.csv">
+      </label>
+      <div class="grid2">
+        <button id="loadCsvUrl" type="button">Load URL</button>
+        <button id="reloadCsvUrl" type="button">Reload</button>
+      </div>
+      <label class="inline-toggle">
+        <input id="autoReloadCsv" type="checkbox">
+        Auto reload latest shot
+      </label>
+      <label>
+        Shot
+        <select id="shotSelect" disabled>
+          <option value="">Upload a frames.csv first</option>
+        </select>
+      </label>
+      <div id="frameList" class="frame-list"></div>
+      <div id="csvStatus" class="data-status">Select up to two frames. One selected frame loads as frame 2.</div>
+
+      <h2>Shot</h2>
+      <div class="grid2">
+        <label>
+          Ball speed mph
+          <input id="ballSpeed" type="number" step="0.1" value="108.3">
+        </label>
+        <label>
+          Ball distance ft
+          <input id="ballDistance" type="number" step="0.1" value="5">
+        </label>
+      </div>
+      <div class="grid2">
+        <label>
+          Net from ball ft
+          <input id="netDistance" type="number" step="0.1" value="10">
+        </label>
+        <label>
+          Mount tilt deg
+          <input id="mountTilt" type="number" step="0.1" value="10">
+        </label>
+      </div>
+      <label>
+        Angle offset deg
+        <input id="angleOffset" type="number" step="0.1" value="2.5">
+      </label>
+      <label>
+        Ball vertical offset ft
+        <input id="ballOffset" type="number" step="0.01" value="-0.333">
+      </label>
+
+      <h2>Frame 1</h2>
+      <div class="frame-box">
+        <div class="grid2">
+          <label>
+            Frame #
+            <input id="frame1Index" type="number" step="1" value="38">
+          </label>
+          <label>
+            Time ms
+            <input id="frame1Time" type="number" step="0.1" value="15.8">
+          </label>
+        </div>
+        <label>
+          Bearing deg
+          <input id="frame1Bearing" type="number" step="0.1" value="-1.1">
+        </label>
+        <label>
+          SNR
+          <input id="frame1Snr" type="number" step="0.1" value="1">
+        </label>
+        <div class="grid2">
+          <label>
+            F1B range ft
+            <input id="frame1Range" type="number" step="0.01">
+          </label>
+          <label>
+            F1B unwrap ft
+            <input id="frame1RangeUnwrapped" type="number" step="0.01">
+          </label>
+        </div>
+        <label>
+          F1B bin error
+          <input id="frame1RangeBinError" type="number" step="1">
+        </label>
+      </div>
+
+      <h2>Frame 2</h2>
+      <div class="frame-box">
+        <div class="grid2">
+          <label>
+            Frame #
+            <input id="frame2Index" type="number" step="1" value="39">
+          </label>
+          <label>
+            Time ms
+            <input id="frame2Time" type="number" step="0.1" value="49.8">
+          </label>
+        </div>
+        <label>
+          Bearing deg
+          <input id="frame2Bearing" type="number" step="0.1" value="5.1">
+        </label>
+        <label>
+          SNR
+          <input id="frame2Snr" type="number" step="0.1" value="1">
+        </label>
+        <div class="grid2">
+          <label>
+            F1B range ft
+            <input id="frame2Range" type="number" step="0.01">
+          </label>
+          <label>
+            F1B unwrap ft
+            <input id="frame2RangeUnwrapped" type="number" step="0.01">
+          </label>
+        </div>
+        <label>
+          F1B bin error
+          <input id="frame2RangeBinError" type="number" step="1">
+        </label>
+      </div>
+
+    </aside>
+
+    <main>
+      <div class="toolbar">
+        <div class="metrics">
+          <div class="metric">
+            <div class="label"><span class="legend legend-line legend-red"></span>Launch From Ball To Frame 2</div>
+            <div id="launchMetric" class="value">-</div>
+            <div id="launchSub" class="sub">-</div>
+          </div>
+          <div class="metric">
+            <div class="label"><span class="legend legend-line legend-dashed legend-green"></span>Free-Start 2-Frame Line</div>
+            <div id="nominalMetric" class="value">-</div>
+            <div id="nominalSub" class="sub">-</div>
+          </div>
+          <div class="metric primary-result">
+            <div class="label">New Launch Angle</div>
+            <div id="geometryMetric" class="value">-</div>
+            <div id="geometrySub" class="sub">-</div>
+          </div>
+          <div class="metric">
+            <div class="label">Start Position Error</div>
+            <div id="startErrorMetric" class="value">-</div>
+            <div id="startErrorSub" class="sub">-</div>
+          </div>
+          <div class="metric">
+            <div class="label"><span class="legend legend-line legend-dashed legend-orange"></span>Frame 1 Miss</div>
+            <div id="missMetric" class="value">-</div>
+            <div id="missSub" class="sub">-</div>
+          </div>
+          <div class="metric">
+            <div class="label">Corrected Times</div>
+            <div id="timesMetric" class="value">-</div>
+            <div id="timesSub" class="sub">-</div>
+          </div>
+          <div class="metric">
+            <div class="label">
+              <span class="legend-pair">
+                <span class="legend legend-dot legend-violet"></span>
+                <span class="legend legend-dot legend-cyan"></span>
+              </span>
+              Frame Distances
+            </div>
+            <div id="distanceMetric" class="value">-</div>
+            <div id="distanceSub" class="sub">-</div>
+          </div>
+          <div class="metric">
+            <div class="label"><span class="legend legend-diamond legend-orange"></span>F1B Ranges</div>
+            <div id="rangeMetric" class="value">-</div>
+            <div id="rangeSub" class="sub">-</div>
+          </div>
+          <div class="metric">
+            <div class="label"><span class="legend legend-line legend-dashed legend-orange"></span>Range Delta</div>
+            <div id="rangeDeltaMetric" class="value">-</div>
+            <div id="rangeDeltaSub" class="sub">-</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="canvas-wrap">
+        <div id="graphShift" class="graph-shift">
+          <button id="minus" type="button">-</button>
+          <label>
+            Shift ms
+            <input id="shiftMs" type="number" step="1" value="0">
+          </label>
+          <button id="plus" type="button">+</button>
+          <label class="range-toggle">
+            <input id="showRange" type="checkbox" checked>
+            Range overlay
+          </label>
+        </div>
+        <canvas id="viz"></canvas>
+      </div>
+
+      <div id="status" class="status"></div>
+    </main>
+  </div>
+
+  <script>
+    const MPH_TO_FPS = 1.46667;
+    const ids = [
+      "ballSpeed",
+      "ballDistance",
+      "netDistance",
+      "mountTilt",
+      "angleOffset",
+      "ballOffset",
+      "frame1Index",
+      "frame1Time",
+      "frame1Bearing",
+      "frame1Snr",
+      "frame1Range",
+      "frame1RangeUnwrapped",
+      "frame1RangeBinError",
+      "frame2Index",
+      "frame2Time",
+      "frame2Bearing",
+      "frame2Snr",
+      "frame2Range",
+      "frame2RangeUnwrapped",
+      "frame2RangeBinError",
+      "shiftMs",
+    ];
+    const inputs = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
+    const canvas = document.getElementById("viz");
+    const ctx = canvas.getContext("2d");
+    const csvFile = document.getElementById("csvFile");
+    const csvUrl = document.getElementById("csvUrl");
+    const loadCsvUrl = document.getElementById("loadCsvUrl");
+    const reloadCsvUrl = document.getElementById("reloadCsvUrl");
+    const autoReloadCsv = document.getElementById("autoReloadCsv");
+    const shotSelect = document.getElementById("shotSelect");
+    const frameList = document.getElementById("frameList");
+    const csvStatus = document.getElementById("csvStatus");
+    const showRange = document.getElementById("showRange");
+    let framesByShot = new Map();
+    let selectedFrameKeys = [];
+    let latestCsvText = "";
+    let autoReloadTimer = null;
+
+    function value(id) {
+      const parsed = Number(inputs[id].value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function optionalValue(id) {
+      const raw = inputs[id].value.trim();
+      if (raw === "") return null;
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    function degToRad(deg) {
+      return (deg * Math.PI) / 180;
+    }
+
+    function radToDeg(rad) {
+      return (rad * 180) / Math.PI;
+    }
+
+    function fmt(value, digits = 1) {
+      return Number.isFinite(value) ? value.toFixed(digits) : "-";
+    }
+
+    function parseCsv(text) {
+      const rows = [];
+      let row = [];
+      let cell = "";
+      let inQuotes = false;
+      for (let i = 0; i < text.length; i += 1) {
+        const char = text[i];
+        const next = text[i + 1];
+        if (char === '"') {
+          if (inQuotes && next === '"') {
+            cell += '"';
+            i += 1;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (char === "," && !inQuotes) {
+          row.push(cell);
+          cell = "";
+        } else if ((char === "\n" || char === "\r") && !inQuotes) {
+          if (char === "\r" && next === "\n") i += 1;
+          row.push(cell);
+          if (row.some((value) => value !== "")) rows.push(row);
+          row = [];
+          cell = "";
+        } else {
+          cell += char;
+        }
+      }
+      row.push(cell);
+      if (row.some((value) => value !== "")) rows.push(row);
+      if (!rows.length) return [];
+      const headers = rows[0].map((header) => header.trim());
+      return rows.slice(1).map((values) => {
+        const record = {};
+        headers.forEach((header, index) => {
+          record[header] = values[index] ?? "";
+        });
+        return record;
+      });
+    }
+
+    function numericCell(row, key) {
+      const parsed = Number(row[key]);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    function firstNumericCell(row, keys) {
+      for (const key of keys) {
+        const value = numericCell(row, key);
+        if (value !== null) return value;
+      }
+      return null;
+    }
+
+    function rangeCell(row) {
+      return firstNumericCell(row, ["f1b_range_ft", "range_ft", "range_m_ft"]);
+    }
+
+    function unwrappedRangeCell(row) {
+      return firstNumericCell(row, ["f1b_range_unwrapped_ft", "range_unwrapped_ft"]);
+    }
+
+    function rangeBinErrorCell(row) {
+      return firstNumericCell(row, ["f1b_peak_bin_error", "range_bin_error"]);
+    }
+
+    function displayBearingCell(row) {
+      const rawBearing = numericCell(row, "angle_centroid_deg");
+      if (rawBearing !== null) return rawBearing + value("angleOffset");
+      return numericCell(row, "bearing_deg");
+    }
+
+    function frameKey(row) {
+      return `${row.shot_number}:${row.frame_index}`;
+    }
+
+    function selectedRowsForShot() {
+      const rows = framesByShot.get(shotSelect.value) || [];
+      const selected = new Set(selectedFrameKeys);
+      return rows.filter((row) => selected.has(frameKey(row)));
+    }
+
+    function setInputValue(id, value, digits = 1) {
+      inputs[id].value = value === null || value === undefined ? "" : String(Number(value).toFixed(digits));
+    }
+
+    function setFrameInputs(prefix, row) {
+      if (!row) {
+        inputs[`${prefix}Index`].value = "";
+        inputs[`${prefix}Time`].value = "";
+        inputs[`${prefix}Bearing`].value = "";
+        inputs[`${prefix}Snr`].value = "1";
+        inputs[`${prefix}Range`].value = "";
+        inputs[`${prefix}RangeUnwrapped`].value = "";
+        inputs[`${prefix}RangeBinError`].value = "";
+        return;
+      }
+      inputs[`${prefix}Index`].value = row.frame_index;
+      setInputValue(`${prefix}Time`, numericCell(row, "t_ms"), 1);
+      setInputValue(`${prefix}Bearing`, displayBearingCell(row), 2);
+      setInputValue(`${prefix}Snr`, numericCell(row, "snr") ?? 1, 1);
+      setInputValue(`${prefix}Range`, rangeCell(row), 2);
+      setInputValue(`${prefix}RangeUnwrapped`, unwrappedRangeCell(row), 2);
+      setInputValue(`${prefix}RangeBinError`, rangeBinErrorCell(row), 0);
+    }
+
+    function applySelectedFrames() {
+      const selected = selectedRowsForShot().sort(
+        (a, b) => Number(a.frame_index) - Number(b.frame_index),
+      );
+      if (selected.length === 0) {
+        setFrameInputs("frame1", null);
+        setFrameInputs("frame2", null);
+        return;
+      }
+      if (selected.length === 1) {
+        setFrameInputs("frame1", null);
+        setFrameInputs("frame2", selected[0]);
+      } else {
+        setFrameInputs("frame1", selected[0]);
+        setFrameInputs("frame2", selected[1]);
+      }
+
+      const speeds = selected
+        .map((row) => numericCell(row, "speed_mph"))
+        .filter((speed) => speed !== null);
+      if (speeds.length) {
+        const averageSpeed = speeds.reduce((sum, speed) => sum + speed, 0) / speeds.length;
+        setInputValue("ballSpeed", averageSpeed, 1);
+      }
+    }
+
+    function describeFrame(row) {
+      const parts = [
+        `${fmt(numericCell(row, "t_ms"), 1)} ms`,
+        `${fmt(displayBearingCell(row), 2)} deg`,
+      ];
+      const speed = numericCell(row, "speed_mph");
+      const snr = numericCell(row, "snr");
+      const binError = numericCell(row, "bin_error");
+      const range = rangeCell(row);
+      const unwrappedRange = unwrappedRangeCell(row);
+      const rangeBinError = rangeBinErrorCell(row);
+      if (speed !== null) parts.push(`${fmt(speed, 1)} mph`);
+      if (snr !== null) parts.push(`SNR ${fmt(snr, 1)}`);
+      if (binError !== null) parts.push(`bin ${binError}`);
+      if (range !== null) parts.push(`F1B ${fmt(range, 1)} ft`);
+      if (range !== null && unwrappedRange !== null && Math.abs(unwrappedRange - range) > 0.05) {
+        parts.push(`unwrap ${fmt(unwrappedRange, 1)} ft`);
+      }
+      if (rangeBinError !== null) parts.push(`F1B bin ${rangeBinError}`);
+      if (row.status) parts.push(row.status);
+      return parts.join(" | ");
+    }
+
+    function renderFrameList() {
+      const rows = framesByShot.get(shotSelect.value) || [];
+      const selected = new Set(selectedFrameKeys);
+      frameList.textContent = "";
+      for (const row of rows) {
+        const key = frameKey(row);
+        const isSelected = selected.has(key);
+        const canPlace = numericCell(row, "t_ms") !== null && displayBearingCell(row) !== null;
+        const locked = !isSelected && selected.size >= 2;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `frame-row${isSelected ? " selected" : ""}${locked ? " locked" : ""}`;
+        button.innerHTML = `<strong>F${row.frame_index}</strong><span>${describeFrame(row)}</span>`;
+        button.addEventListener("click", () => {
+          if (!canPlace) {
+            csvStatus.textContent = `Frame ${row.frame_index} is missing t_ms or angle data.`;
+            return;
+          }
+          if (isSelected) {
+            selectedFrameKeys = selectedFrameKeys.filter((item) => item !== key);
+          } else if (selectedFrameKeys.length < 2) {
+            selectedFrameKeys.push(key);
+          } else {
+            csvStatus.textContent = "Only two frames can be selected. Deselect one first.";
+            return;
+          }
+          applySelectedFrames();
+          renderFrameList();
+          render();
+        });
+        frameList.appendChild(button);
+      }
+      const selectedRows = selectedRowsForShot();
+      csvStatus.textContent = selectedRows.length
+        ? `Selected ${selectedRows.map((row) => `F${row.frame_index}`).join(" and ")}.`
+        : "Select up to two frames. One selected frame loads as frame 2.";
+    }
+
+    function selectDefaultFramesForShot() {
+      const rows = framesByShot.get(shotSelect.value) || [];
+      const selectedRows = rows
+        .filter((row) => row.status === "selected")
+        .sort((a, b) => Number(a.frame_index) - Number(b.frame_index))
+        .slice(0, 2);
+      selectedFrameKeys = selectedRows.map(frameKey);
+      applySelectedFrames();
+      renderFrameList();
+      render();
+    }
+
+    function loadFramesCsv(text, options = {}) {
+      const previousShot = shotSelect.value;
+      const rows = parseCsv(text).filter((row) => row.shot_number && row.frame_index);
+      framesByShot = new Map();
+      for (const row of rows) {
+        const shot = row.shot_number;
+        if (!framesByShot.has(shot)) framesByShot.set(shot, []);
+        framesByShot.get(shot).push(row);
+      }
+      for (const shotRows of framesByShot.values()) {
+        shotRows.sort((a, b) => Number(a.frame_index) - Number(b.frame_index));
+      }
+      const shots = [...framesByShot.keys()].sort((a, b) => Number(a) - Number(b));
+      shotSelect.innerHTML = "";
+      if (!shots.length) {
+        shotSelect.disabled = true;
+        shotSelect.innerHTML = '<option value="">No frames found</option>';
+        frameList.textContent = "";
+        csvStatus.textContent = "Could not find shot_number and frame_index columns.";
+        return;
+      }
+      for (const shot of shots) {
+        const option = document.createElement("option");
+        option.value = shot;
+        option.textContent = `Shot ${shot}`;
+        shotSelect.appendChild(option);
+      }
+      shotSelect.disabled = false;
+      if (options.preferLatest) {
+        shotSelect.value = shots[shots.length - 1];
+      } else if (previousShot && shots.includes(previousShot)) {
+        shotSelect.value = previousShot;
+      } else {
+        shotSelect.value = shots[0];
+      }
+      csvStatus.textContent = `Loaded ${rows.length} frames across ${shots.length} shots.`;
+      selectDefaultFramesForShot();
+    }
+
+    async function loadFramesCsvFromUrl(options = {}) {
+      const url = csvUrl.value.trim();
+      if (!url) {
+        csvStatus.textContent = "Enter a CSV URL first.";
+        return;
+      }
+      const cacheBustedUrl = `${url}${url.includes("?") ? "&" : "?"}_=${Date.now()}`;
+      const response = await fetch(cacheBustedUrl, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`${response.status} ${response.statusText}`);
+      }
+      const text = await response.text();
+      if (options.skipIfUnchanged && text === latestCsvText) return;
+      latestCsvText = text;
+      loadFramesCsv(text, { preferLatest: options.preferLatest ?? autoReloadCsv.checked });
+      csvStatus.textContent += ` Auto-loaded ${url} at ${new Date().toLocaleTimeString()}.`;
+    }
+
+    function updateAutoReloadTimer() {
+      if (autoReloadTimer) {
+        clearInterval(autoReloadTimer);
+        autoReloadTimer = null;
+      }
+      if (!autoReloadCsv.checked) return;
+      autoReloadTimer = setInterval(() => {
+        loadFramesCsvFromUrl({ preferLatest: true, skipIfUnchanged: true }).catch((error) => {
+          csvStatus.textContent = `Auto reload failed: ${error.message}`;
+        });
+      }, 2500);
+    }
+
+    function pointOnBearingAtFlightDistance(bearingDeg, timeMs, params) {
+      if (!Number.isFinite(bearingDeg) || !Number.isFinite(timeMs)) {
+        return {
+          ok: false,
+          reason: "not_configured",
+          tSec: null,
+          flightDistance: null,
+        };
+      }
+      const tSec = timeMs / 1000;
+      const signedFlightDistance = params.ballSpeed * MPH_TO_FPS * tSec;
+      const phi = degToRad(bearingDeg + params.mountTilt);
+      const x = params.ballDistance + signedFlightDistance;
+      const y = Math.tan(phi) * x;
+      const distanceAlongRay = Math.hypot(x, y);
+      return {
+        ok: true,
+        x,
+        y,
+        distanceAlongRay,
+        tSec,
+        flightDistance: signedFlightDistance,
+        flightDistanceAbs: Math.abs(signedFlightDistance),
+        isPreImpact: tSec < 0,
+        physicalBearingDeg: bearingDeg + params.mountTilt,
+      };
+    }
+
+    function pointOnBearingAtMeasuredRange(frame, params) {
+      if (
+        frame.bearingDeg === null ||
+        !Number.isFinite(frame.bearingDeg)
+      ) {
+        return { ok: false, reason: "not_configured" };
+      }
+
+      const hasUnwrapped = Number.isFinite(frame.rangeUnwrappedFt) && frame.rangeUnwrappedFt > 0;
+      const preferredRange = hasUnwrapped ? frame.rangeUnwrappedFt : frame.rangeFt;
+      if (!Number.isFinite(preferredRange) || preferredRange <= 0) {
+        return { ok: false, reason: "range_not_available" };
+      }
+
+      const phi = degToRad(frame.bearingDeg + params.mountTilt);
+      return {
+        ok: true,
+        x: preferredRange * Math.cos(phi),
+        y: preferredRange * Math.sin(phi),
+        rangeFt: preferredRange,
+        rawRangeFt: frame.rangeFt,
+        unwrappedRangeFt: frame.rangeUnwrappedFt,
+        rangeBinError: frame.rangeBinError,
+        rangeSource: hasUnwrapped ? "unwrapped" : "raw",
+      };
+    }
+
+    function rangeDelta(point, rangePoint) {
+      if (!point.ok || !rangePoint.ok || !Number.isFinite(point.distanceAlongRay)) return null;
+      return rangePoint.rangeFt - point.distanceAlongRay;
+    }
+
+    function signedPointLineDistance(point, lineA, lineB) {
+      const vx = lineB.x - lineA.x;
+      const vy = lineB.y - lineA.y;
+      const wx = point.x - lineA.x;
+      const wy = point.y - lineA.y;
+      const len = Math.hypot(vx, vy);
+      if (len <= 0) return 0;
+      return (vx * wy - vy * wx) / len;
+    }
+
+    function projectionAlongLine(point, lineA, lineB) {
+      const vx = lineB.x - lineA.x;
+      const vy = lineB.y - lineA.y;
+      const wx = point.x - lineA.x;
+      const wy = point.y - lineA.y;
+      const len2 = vx * vx + vy * vy;
+      if (len2 <= 0) return { x: lineA.x, y: lineA.y };
+      const u = (wx * vx + wy * vy) / len2;
+      return { x: lineA.x + u * vx, y: lineA.y + u * vy, u };
+    }
+
+    function freeStartLine(p1, p2, params) {
+      if (!p1.ok || !p2.ok) return null;
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      if (Math.abs(dx) < 1e-6 || Math.abs(dy) < 1e-6) return null;
+      const slope = dy / dx;
+      return {
+        launchDeg: radToDeg(Math.atan2(dy, dx)),
+        slope,
+        xAtBallHeight: p1.x + (params.ballOffset - p1.y) / slope,
+        yAtKnownBall: p1.y + slope * (params.ballDistance - p1.x),
+      };
+    }
+
+    function getParams() {
+      const shiftMs = value("shiftMs");
+      const frame1Time = optionalValue("frame1Time");
+      const frame2Time = optionalValue("frame2Time");
+      return {
+        ballSpeed: value("ballSpeed"),
+        ballDistance: value("ballDistance"),
+        netDistance: value("netDistance"),
+        mountTilt: value("mountTilt"),
+        ballOffset: value("ballOffset"),
+        showRange: showRange.checked,
+        shiftMs,
+        frame1: {
+          index: optionalValue("frame1Index"),
+          rawTimeMs: frame1Time,
+          timeMs: frame1Time === null ? null : frame1Time + shiftMs,
+          bearingDeg: optionalValue("frame1Bearing"),
+          snr: optionalValue("frame1Snr") ?? 1,
+          rangeFt: optionalValue("frame1Range"),
+          rangeUnwrappedFt: optionalValue("frame1RangeUnwrapped"),
+          rangeBinError: optionalValue("frame1RangeBinError"),
+        },
+        frame2: {
+          index: optionalValue("frame2Index"),
+          rawTimeMs: frame2Time,
+          timeMs: frame2Time === null ? null : frame2Time + shiftMs,
+          bearingDeg: optionalValue("frame2Bearing"),
+          snr: optionalValue("frame2Snr") ?? 1,
+          rangeFt: optionalValue("frame2Range"),
+          rangeUnwrappedFt: optionalValue("frame2RangeUnwrapped"),
+          rangeBinError: optionalValue("frame2RangeBinError"),
+        },
+      };
+    }
+
+    function predictedBearingDeg(launchDeg, timeMs, params) {
+      const tSec = timeMs / 1000;
+      const alpha = degToRad(launchDeg);
+      const speedFps = params.ballSpeed * MPH_TO_FPS;
+      const x = params.ballDistance + speedFps * Math.cos(alpha) * tSec;
+      const y = params.ballOffset + speedFps * Math.sin(alpha) * tSec;
+      return radToDeg(Math.atan2(y, x)) - params.mountTilt;
+    }
+
+    function geometryFit(params) {
+      const frames = [params.frame1, params.frame2]
+        .filter((frame) => (
+          frame.timeMs !== null &&
+          Number.isFinite(frame.timeMs) &&
+          frame.timeMs > 0 &&
+          frame.timeMs <= 150 &&
+          frame.bearingDeg !== null &&
+          Number.isFinite(frame.bearingDeg)
+        ))
+        .map((frame) => ({
+          ...frame,
+          weight: Math.max(frame.snr * frame.snr, 1),
+        }));
+      if (!frames.length) return null;
+
+      let best = null;
+      for (let launchDeg = 0; launchDeg <= 45.0001; launchDeg += 0.1) {
+        let weightedError = 0;
+        let weightSum = 0;
+        for (const frame of frames) {
+          const predicted = predictedBearingDeg(launchDeg, frame.timeMs, params);
+          const residual = frame.bearingDeg - predicted;
+          weightedError += frame.weight * residual * residual;
+          weightSum += frame.weight;
+        }
+        const rmse = Math.sqrt(weightedError / weightSum);
+        if (!best || rmse < best.rmse) {
+          best = {
+            launchDeg,
+            rmse,
+            frameCount: frames.length,
+          };
+        }
+      }
+      return best;
+    }
+
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.max(1, Math.round(rect.width * dpr));
+      canvas.height = Math.max(1, Math.round(rect.height * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function buildScale(params, p1, p2, freeLine, r1, r2) {
+      const screenX = params.ballDistance + params.netDistance;
+      const xs = [0, params.ballDistance, screenX];
+      const ys = [0, params.ballOffset];
+      if (p1.ok) {
+        xs.push(p1.x);
+        ys.push(p1.y);
+      } else if (p1.closest) {
+        xs.push(p1.closest.x);
+        ys.push(p1.closest.y);
+      }
+      if (p2.ok) {
+        xs.push(p2.x);
+        ys.push(p2.y);
+      } else if (p2.closest) {
+        xs.push(p2.closest.x);
+        ys.push(p2.closest.y);
+      }
+      if (freeLine) {
+        xs.push(freeLine.xAtBallHeight);
+        ys.push(freeLine.yAtKnownBall);
+      }
+      if (params.showRange && r1.ok) {
+        xs.push(r1.x);
+        ys.push(r1.y);
+      }
+      if (params.showRange && r2.ok) {
+        xs.push(r2.x);
+        ys.push(r2.y);
+      }
+      const minX = Math.min(-0.8, ...xs) - 0.2;
+      const maxX = Math.max(screenX + 0.8, ...xs) + 0.4;
+      const minY = Math.min(-1.0, ...ys) - 0.3;
+      const maxY = Math.max(3.5, ...ys) + 0.6;
+      const pad = 42;
+      const width = canvas.clientWidth;
+      const height = canvas.clientHeight;
+      const sx = (width - pad * 2) / (maxX - minX);
+      const sy = (height - pad * 2) / (maxY - minY);
+      const scale = Math.min(sx, sy);
+      const usedW = (maxX - minX) * scale;
+      const ox = (width - usedW) / 2 - minX * scale;
+      const oy = pad + maxY * scale;
+      return {
+        x: (worldX) => ox + worldX * scale,
+        y: (worldY) => oy - worldY * scale,
+        scale,
+        minX,
+        maxX,
+        minY,
+        maxY,
+      };
+    }
+
+    function drawText(text, x, y, color = "#172033", align = "left") {
+      ctx.fillStyle = color;
+      ctx.textAlign = align;
+      ctx.textBaseline = "middle";
+      ctx.font = "12px Inter, system-ui, sans-serif";
+      ctx.fillText(text, x, y);
+    }
+
+    function draw(params, p1, p2, freeLine, r1, r2) {
+      resizeCanvas();
+      const width = canvas.clientWidth;
+      const height = canvas.clientHeight;
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, width, height);
+      const scale = buildScale(params, p1, p2, freeLine, r1, r2);
+      const screenX = params.ballDistance + params.netDistance;
+      const ball = { x: params.ballDistance, y: params.ballOffset };
+
+      ctx.strokeStyle = "#e5e7eb";
+      ctx.lineWidth = 1;
+      for (let x = Math.ceil(scale.minX); x <= Math.floor(scale.maxX); x += 1) {
+        ctx.beginPath();
+        ctx.moveTo(scale.x(x), scale.y(scale.minY));
+        ctx.lineTo(scale.x(x), scale.y(scale.maxY));
+        ctx.stroke();
+      }
+      for (let y = Math.ceil(scale.minY); y <= Math.floor(scale.maxY); y += 1) {
+        ctx.beginPath();
+        ctx.moveTo(scale.x(scale.minX), scale.y(y));
+        ctx.lineTo(scale.x(scale.maxX), scale.y(y));
+        ctx.stroke();
+      }
+
+      ctx.strokeStyle = "#cbd5e1";
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(scale.x(scale.minX), scale.y(0));
+      ctx.lineTo(scale.x(scale.maxX), scale.y(0));
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.strokeStyle = "#9ca3af";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(scale.x(scale.minX), scale.y(params.ballOffset));
+      ctx.lineTo(scale.x(scale.maxX), scale.y(params.ballOffset));
+      ctx.stroke();
+
+      ctx.strokeStyle = "#111827";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(scale.x(screenX), scale.y(scale.minY));
+      ctx.lineTo(scale.x(screenX), scale.y(scale.maxY));
+      ctx.stroke();
+      drawText("net/screen", scale.x(screenX) + 8, scale.y(scale.maxY) + 16, "#111827");
+
+      ctx.strokeStyle = "#2563eb";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      ctx.moveTo(scale.x(params.ballDistance), scale.y(scale.minY));
+      ctx.lineTo(scale.x(params.ballDistance), scale.y(scale.maxY));
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      function drawBearingRay(point, color, label) {
+        const drawable = point.ok ? point : point.closest;
+        if (!drawable) return;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash(point.ok ? [2, 3] : [2, 6]);
+        ctx.beginPath();
+        ctx.moveTo(scale.x(0), scale.y(0));
+        ctx.lineTo(scale.x(drawable.x * 1.08), scale.y(drawable.y * 1.08));
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.arc(scale.x(drawable.x), scale.y(drawable.y), 6, 0, Math.PI * 2);
+        if (point.ok) {
+          ctx.fillStyle = color;
+          ctx.fill();
+        } else {
+          ctx.fillStyle = "#ffffff";
+          ctx.fill();
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+        drawText(
+          point.ok ? label : `${label} closest`,
+          scale.x(drawable.x) + 9,
+          scale.y(drawable.y) - 12,
+          color,
+        );
+      }
+
+      function drawRangePoint(rangePoint, speedPoint, color, label) {
+        if (!rangePoint.ok) return;
+        ctx.strokeStyle = color;
+        ctx.fillStyle = "#fff7ed";
+        ctx.lineWidth = 1.8;
+        if (speedPoint.ok) {
+          ctx.setLineDash([3, 4]);
+          ctx.beginPath();
+          ctx.moveTo(scale.x(speedPoint.x), scale.y(speedPoint.y));
+          ctx.lineTo(scale.x(rangePoint.x), scale.y(rangePoint.y));
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+        const x = scale.x(rangePoint.x);
+        const y = scale.y(rangePoint.y);
+        const size = 6;
+        ctx.beginPath();
+        ctx.moveTo(x, y - size);
+        ctx.lineTo(x + size, y);
+        ctx.lineTo(x, y + size);
+        ctx.lineTo(x - size, y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        drawText(label, x + 9, y + 14, color);
+      }
+
+      if (freeLine) {
+        const yAtScreen = p1.y + freeLine.slope * (screenX - p1.x);
+        const yAtLeft = p1.y + freeLine.slope * (scale.minX - p1.x);
+        ctx.strokeStyle = "#047857";
+        ctx.lineWidth = 2.4;
+        ctx.setLineDash([8, 5]);
+        ctx.beginPath();
+        ctx.moveTo(scale.x(scale.minX), scale.y(yAtLeft));
+        ctx.lineTo(scale.x(screenX), scale.y(yAtScreen));
+        ctx.stroke();
+        ctx.setLineDash([]);
+        drawText(
+          `free-start ${fmt(freeLine.launchDeg, 2)} deg`,
+          scale.x(screenX) - 170,
+          scale.y(yAtScreen) - 14,
+          "#047857",
+        );
+      }
+
+      if (p2.ok) {
+        const dx = p2.x - ball.x;
+        const dy = p2.y - ball.y;
+        const len = Math.hypot(dx, dy);
+        const ux = dx / len;
+        const uy = dy / len;
+        ctx.strokeStyle = "#dc2626";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(scale.x(ball.x - ux * 0.3), scale.y(ball.y - uy * 0.3));
+        ctx.lineTo(scale.x(screenX), scale.y(ball.y + uy / ux * (screenX - ball.x)));
+        ctx.stroke();
+      }
+
+      drawBearingRay(
+        p1,
+        "#7c3aed",
+        `F${params.frame1.index} ${fmt(params.frame1.timeMs)} ms${p1.isPreImpact ? " pre" : ""}`,
+      );
+      drawBearingRay(
+        p2,
+        "#0786a8",
+        `F${params.frame2.index} ${fmt(params.frame2.timeMs)} ms${p2.isPreImpact ? " pre" : ""}`,
+      );
+      if (params.showRange) {
+        drawRangePoint(
+          r1,
+          p1,
+          params.frame1.rangeBinError !== null && params.frame1.rangeBinError > 50 ? "#dc2626" : "#b45309",
+          `F${params.frame1.index} F1B ${fmt(r1.rangeFt, 1)} ft`,
+        );
+        drawRangePoint(
+          r2,
+          p2,
+          params.frame2.rangeBinError !== null && params.frame2.rangeBinError > 50 ? "#dc2626" : "#b45309",
+          `F${params.frame2.index} F1B ${fmt(r2.rangeFt, 1)} ft`,
+        );
+      }
+
+      ctx.fillStyle = "#111827";
+      ctx.beginPath();
+      ctx.arc(scale.x(0), scale.y(0), 7, 0, Math.PI * 2);
+      ctx.fill();
+      drawText("K-LD7 radar", scale.x(0) + 9, scale.y(0) - 18, "#111827");
+
+      ctx.fillStyle = "#dbeafe";
+      ctx.strokeStyle = "#2563eb";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(scale.x(ball.x), scale.y(ball.y), 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      drawText(`ball ${fmt(params.ballDistance)} ft`, scale.x(ball.x) + 9, scale.y(ball.y) + 18, "#1d4ed8");
+
+      if (p1.ok && p2.ok) {
+        const projection = projectionAlongLine(p1, ball, p2);
+        ctx.strokeStyle = "#b45309";
+        ctx.lineWidth = 1.4;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(scale.x(p1.x), scale.y(p1.y));
+        ctx.lineTo(scale.x(projection.x), scale.y(projection.y));
+        ctx.stroke();
+        ctx.setLineDash([]);
+        drawText("F1 miss", scale.x(projection.x) + 7, scale.y(projection.y) - 12, "#b45309");
+      }
+
+      ctx.fillStyle = "#475569";
+      ctx.font = "12px Inter, system-ui, sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText(
+        params.showRange
+          ? "Dots: speed*time downrange with K-LD7 bearing height. Red: ball to frame 2. Green dashed: free-start line. Diamonds: F1B range points."
+          : "Dots: speed*time downrange with K-LD7 bearing height. Red: ball to frame 2. Green dashed: free-start line.",
+        16,
+        height - 16,
+      );
+    }
+
+    function updateMetrics(params, p1, p2, freeLine, r1, r2) {
+      const ball = { x: params.ballDistance, y: params.ballOffset };
+      const status = document.getElementById("status");
+      const messages = [];
+      if (!p1.ok && p1.reason !== "not_configured") {
+        messages.push(
+          p1.closest
+            ? `Frame 1: bearing ray misses the speed/time circle; hollow marker shows closest approach.`
+            : `Frame 1: ${p1.reason}.`,
+        );
+      }
+      if (!p2.ok && p2.reason !== "not_configured") {
+        messages.push(
+          p2.closest
+            ? `Frame 2: bearing ray misses the speed/time circle; hollow marker shows closest approach.`
+            : `Frame 2: ${p2.reason}.`,
+        );
+      }
+      const preImpactNotes = [];
+      if (p1.ok && p1.isPreImpact) preImpactNotes.push(`F${params.frame1.index}`);
+      if (p2.ok && p2.isPreImpact) preImpactNotes.push(`F${params.frame2.index}`);
+
+      if (p2.ok) {
+        const launch = radToDeg(Math.atan2(p2.y - ball.y, p2.x - ball.x));
+        document.getElementById("launchMetric").textContent = `${fmt(launch, 2)} deg`;
+        document.getElementById("launchSub").textContent =
+          `Ball to F${params.frame2.index}, using bearing ${fmt(params.frame2.bearingDeg, 1)} deg`;
+      } else {
+        document.getElementById("launchMetric").textContent = "-";
+        document.getElementById("launchSub").textContent = "Frame 2 cannot be placed";
+      }
+
+      if (freeLine) {
+        document.getElementById("nominalMetric").textContent = `${fmt(freeLine.launchDeg, 2)} deg`;
+        document.getElementById("nominalSub").textContent =
+          `Crosses ball height at ${fmt(freeLine.xAtBallHeight, 2)} ft`;
+        const startError = freeLine.xAtBallHeight - params.ballDistance;
+        document.getElementById("startErrorMetric").textContent =
+          `${startError >= 0 ? "+" : ""}${fmt(startError, 2)} ft`;
+        document.getElementById("startErrorSub").textContent =
+          startError >= 0 ? "green line crosses after ball" : "green line crosses before ball";
+      } else {
+        document.getElementById("nominalMetric").textContent = "-";
+        document.getElementById("nominalSub").textContent = "Needs two placed frames";
+        document.getElementById("startErrorMetric").textContent = "-";
+        document.getElementById("startErrorSub").textContent = "Needs free-start line";
+      }
+
+      const fit = geometryFit(params);
+      if (fit) {
+        document.getElementById("geometryMetric").textContent = `${fmt(fit.launchDeg, 2)} deg`;
+        document.getElementById("geometrySub").textContent =
+          `${fit.frameCount}-frame weighted fit, RMSE ${fmt(fit.rmse, 2)} deg`;
+      } else {
+        document.getElementById("geometryMetric").textContent = "-";
+        document.getElementById("geometrySub").textContent = "Needs at least one placed frame";
+      }
+
+      if (p1.ok && p2.ok) {
+        const miss = signedPointLineDistance(p1, ball, p2);
+        document.getElementById("missMetric").textContent = `${fmt(Math.abs(miss), 3)} ft`;
+        document.getElementById("missSub").textContent =
+          `${miss >= 0 ? "above/left" : "below/right"} of ball-to-F${params.frame2.index} line`;
+      } else {
+        document.getElementById("missMetric").textContent = "-";
+        document.getElementById("missSub").textContent = "Needs both frames";
+      }
+
+      document.getElementById("timesMetric").textContent =
+        `${fmt(params.frame1.timeMs, 1)} / ${fmt(params.frame2.timeMs, 1)} ms`;
+      document.getElementById("timesSub").textContent =
+        `Raw ${fmt(params.frame1.rawTimeMs, 1)} / ${fmt(params.frame2.rawTimeMs, 1)}, shift ${fmt(params.shiftMs, 1)} ms`;
+
+      document.getElementById("distanceMetric").textContent =
+        `${fmt(p1.flightDistance, 2)} / ${fmt(p2.flightDistance, 2)} ft`;
+      document.getElementById("distanceSub").textContent =
+        `speed * corrected time`;
+
+      const r1Delta = rangeDelta(p1, r1);
+      const r2Delta = rangeDelta(p2, r2);
+      document.getElementById("rangeMetric").textContent =
+        `${fmt(r1.rangeFt, 2)} / ${fmt(r2.rangeFt, 2)} ft`;
+      document.getElementById("rangeSub").textContent =
+        `raw ${fmt(params.frame1.rangeFt, 2)} / ${fmt(params.frame2.rangeFt, 2)}, ` +
+        `F1B bin ${fmt(params.frame1.rangeBinError, 0)} / ${fmt(params.frame2.rangeBinError, 0)}`;
+      document.getElementById("rangeDeltaMetric").textContent =
+        `${r1Delta === null ? "-" : `${r1Delta >= 0 ? "+" : ""}${fmt(r1Delta, 2)}`} / ` +
+        `${r2Delta === null ? "-" : `${r2Delta >= 0 ? "+" : ""}${fmt(r2Delta, 2)}`} ft`;
+      document.getElementById("rangeDeltaSub").textContent =
+        `F1B range - speed/time ray distance`;
+
+      if (p1.reason === "not_configured" && p2.ok) {
+        status.innerHTML =
+          `<strong>Single-frame mode:</strong> Frame 2 is placed from the selected frame. ` +
+          `Select one more frame to draw the free-start green line and timing-error metrics.`;
+      } else if (messages.length === 0) {
+        status.innerHTML =
+          `<strong>How to read it:</strong> Red is the direct ball-to-frame-2 line. ` +
+          `Green dashed is the line through both frame circles, ignoring the known ball start point. ` +
+          `Frame dots use speed*time for downrange position and K-LD7 bearing for height; the blue ball line is only a reference. ` +
+          `Frame 1 should land on the red line when the per-shot timing shift is right. ` +
+          (preImpactNotes.length
+            ? `${preImpactNotes.join(" and ")} are drawn before the ball-strike line; Geometry Fit ignores pre-impact frames. `
+            : ``) +
+          (params.showRange ? `Orange/red diamonds show F1B range points. ` : ``) +
+          `Use +/- to slide both frame times together by 1 ms.`;
+      } else {
+        status.innerHTML = `<strong>Placement warning:</strong> ${messages.join(" ")}`;
+      }
+    }
+
+    function render() {
+      const params = getParams();
+      const p1 = pointOnBearingAtFlightDistance(
+        params.frame1.bearingDeg,
+        params.frame1.timeMs,
+        params,
+      );
+      const p2 = pointOnBearingAtFlightDistance(
+        params.frame2.bearingDeg,
+        params.frame2.timeMs,
+        params,
+      );
+      const r1 = pointOnBearingAtMeasuredRange(params.frame1, params);
+      const r2 = pointOnBearingAtMeasuredRange(params.frame2, params);
+      const freeLine = freeStartLine(p1, p2, params);
+      draw(params, p1, p2, freeLine, r1, r2);
+      updateMetrics(params, p1, p2, freeLine, r1, r2);
+    }
+
+    document.getElementById("minus").addEventListener("click", () => {
+      inputs.shiftMs.value = String(value("shiftMs") - 1);
+      render();
+    });
+    document.getElementById("plus").addEventListener("click", () => {
+      inputs.shiftMs.value = String(value("shiftMs") + 1);
+      render();
+    });
+    showRange.addEventListener("change", render);
+    loadCsvUrl.addEventListener("click", () => {
+      loadFramesCsvFromUrl({ preferLatest: true }).catch((error) => {
+        csvStatus.textContent = `CSV URL load failed: ${error.message}`;
+      });
+    });
+    reloadCsvUrl.addEventListener("click", () => {
+      loadFramesCsvFromUrl({ preferLatest: autoReloadCsv.checked }).catch((error) => {
+        csvStatus.textContent = `CSV URL reload failed: ${error.message}`;
+      });
+    });
+    autoReloadCsv.addEventListener("change", () => {
+      updateAutoReloadTimer();
+      if (autoReloadCsv.checked) {
+        loadFramesCsvFromUrl({ preferLatest: true }).catch((error) => {
+          csvStatus.textContent = `Auto reload failed: ${error.message}`;
+        });
+      }
+    });
+    csvFile.addEventListener("change", async () => {
+      const file = csvFile.files && csvFile.files[0];
+      if (!file) return;
+      try {
+        latestCsvText = "";
+        loadFramesCsv(await file.text());
+      } catch (error) {
+        csvStatus.textContent = `CSV load failed: ${error.message}`;
+      }
+    });
+    shotSelect.addEventListener("change", selectDefaultFramesForShot);
+    for (const [id, input] of Object.entries(inputs)) {
+      input.addEventListener("input", () => {
+        if (id === "angleOffset" && framesByShot.size) {
+          if (selectedFrameKeys.length) applySelectedFrames();
+          renderFrameList();
+        }
+        render();
+      });
+    }
+    window.addEventListener("resize", render);
+    const query = new URLSearchParams(window.location.search);
+    if (query.has("csv")) {
+      csvUrl.value = query.get("csv") || "";
+    }
+    if (query.get("auto") === "1" || query.get("auto") === "true") {
+      autoReloadCsv.checked = true;
+      updateAutoReloadTimer();
+      loadFramesCsvFromUrl({ preferLatest: true }).catch((error) => {
+        csvStatus.textContent = `Auto reload failed: ${error.message}`;
+      });
+    }
+    render();
+  </script>
+</body>
+</html>

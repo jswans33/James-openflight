@@ -45,41 +45,33 @@ The sensor returns JSON with:
 
 ## Triggering Strategy for Golf
 
-The radar needs a trigger to know when to dump the buffer. Options:
+The radar needs a trigger to know when to dump the buffer. The recommended approach is a direct hardware trigger via HOST_INT.
 
-### 1. GPIO Passthrough Sound Trigger (Recommended)
+> **Important: Persistent Mode Required.** The OPS243-A has a firmware bug where the HOST_INT pin mode switches when transitioning from normal mode (GS) to rolling buffer mode (GC) at runtime. The fix from OmniPreSense: save rolling buffer mode to persistent memory (`A!` command) and power cycle the board. After that, hardware triggers work correctly. See the [Radar Setup section](raspberry-pi-setup.md#radar-setup-one-time) in the Pi setup guide, or run:
+> ```
+> uv run python scripts/hardware-test/test_rolling_buffer_persist.py --setup
+> # Power cycle the radar
+> uv run python scripts/hardware-test/test_rolling_buffer_persist.py --test
+> ```
 
-Uses the SparkFun SEN-14262 sound detector with Pi as a voltage booster for ultra-low-latency triggering (~10μs).
+### 1. Direct Hardware Sound Trigger (Recommended)
+
+Uses the SparkFun SEN-14262 sound detector wired directly to HOST_INT via a level shifter. The sound of club impact triggers the radar to dump its buffer. Near-zero latency (~10us).
 
 **Hardware Required:**
 - SparkFun SEN-14262 Sound Detector (~$12)
-- Jumper wires for GPIO connection
+- BSS138 level shifter module (~$4)
 
 **Wiring:**
-```
-SEN-14262 GATE → Pi GPIO17 (physical pin 11) [input]
-Pi GPIO27 (physical pin 13) → OPS243-A HOST_INT (J3 Pin 3) [output]
-SEN-14262 VCC → Pi 3.3V (pin 1)
-SEN-14262 GND → Pi GND (pin 6) → Radar GND
-```
-
-**How it works:**
-1. Club impact creates sound wave
-2. SEN-14262 GATE goes HIGH (~2.5V)
-3. Pi GPIO17 detects edge (threshold ~1.8V, lower than HOST_INT)
-4. lgpio C callback immediately pulses GPIO27 HIGH (3.3V)
-5. Radar HOST_INT triggers buffer dump
-6. Python reads I/Q data from serial
-
-**Why GPIO Passthrough?** The SEN-14262 GATE voltage (~2.5V) doesn't reach the radar's HOST_INT threshold (~3.0V). The Pi acts as a hardware voltage booster, and the lgpio callback runs in C (not Python) for minimal latency.
+See [sound-trigger-wiring.md](sound-trigger-wiring.md) for full circuit details.
 
 **Usage:**
 ```bash
-# Via server
-openflight-server --mode rolling-buffer --trigger sound-passthrough
+# Default mode in start-kiosk.sh
+./scripts/start-kiosk.sh
 
-# Test script with latency measurement
-uv run python scripts/test_sound_trigger_passthrough.py
+# Or explicitly
+openflight-server --mode rolling-buffer --trigger sound
 ```
 
 ### 2. Speed Threshold Trigger
@@ -118,7 +110,7 @@ openflight-server --mode rolling-buffer --trigger polling
 
 | Trigger Type | Latency | Hardware Required |
 |--------------|---------|-------------------|
-| `sound-passthrough` | ~10μs | SEN-14262 + GPIO wiring |
+| `sound` | ~10μs | SEN-14262 + level shifter (recommended) |
 | `speed` | ~5-6ms | None (uses radar detection) |
 | `sound-gpio` | ~1-18ms | SEN-14262 + GPIO wiring |
 | `polling` | ~300ms | None |

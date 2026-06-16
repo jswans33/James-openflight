@@ -1,0 +1,12 @@
+[Unit]
+Description=OpenFlight cloud uploader (push filtered sessions to FlightWeb)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=coleman
+WorkingDirectory=/home/coleman/openflight
+# Uses the venv's console script; falls back to module form if not on PATH.
+ExecStart=/home/coleman/openflight/.venv/bin/openflight-cloud push
+# Opt-in: this no-ops until the user runs `openflight-cloud link`.

@@ -44,6 +44,18 @@ Thumbs.db
 # Project specific
 shots/
 logs/
+credentials.env
+*.env
+!*.env.example
+
+# Local capture and analysis artifacts. Historical fixtures under
+# session_logs remain tracked; new logs can still be added with git add -f.
+session_logs/session_*.jsonl
+session_logs/*.csv
+session_logs/*.md
+session_logs/*.pkl
+session_logs/*.zip
+session_logs/*/
 
 # Test artifacts
 test_camera.jpg
@@ -56,7 +68,4 @@ htmlcov/
 
 # UI (Node.js)
 ui/node_modules/
-ui/dist/
-
-session_logs/
-*.pkl
+ui/dist/autoresearch-results.tsv

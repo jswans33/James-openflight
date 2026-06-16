@@ -1,5 +1,8 @@
-import { useState, useMemo, memo } from 'react';
+import { useMemo, useState, memo } from 'react';
 import type { Shot } from '../types/shot';
+import { useUnitPreference } from '../state/useUnitPreference';
+import type { UnitSystem } from '../utils/units';
+import { formatDistance, formatSpeed, getDistanceUnit } from '../utils/units';
 import './ShotList.css';
 
 const SHOTS_PER_PAGE = 5;
@@ -11,37 +14,34 @@ interface ShotListProps {
 interface ShotRowProps {
   shot: Shot;
   shotNumber: number;
+  unitSystem: UnitSystem;
+  distanceUnit: string;
 }
 
-const ShotRow = memo(function ShotRow({ shot, shotNumber }: ShotRowProps) {
-  const hasLaunchAngle = shot.launch_angle_vertical !== null;
-
+const ShotRow = memo(function ShotRow({ shot, shotNumber, unitSystem, distanceUnit }: ShotRowProps) {
   return (
     <div className="shot-row">
       <span className="shot-row__number">#{shotNumber}</span>
       <span className="shot-row__club">{shot.club}</span>
       <span className="shot-row__stat">
-        <span className="shot-row__value">{shot.ball_speed_mph.toFixed(1)}</span>
-        <span className="shot-row__label">mph</span>
+        <span className="shot-row__value">{formatSpeed(shot.ball_speed_mph, unitSystem, 1)}</span>
+        <span className="shot-row__label">ball</span>
       </span>
-      {hasLaunchAngle ? (
-        <span className="shot-row__stat">
-          <span className="shot-row__value">{shot.launch_angle_vertical!.toFixed(1)}°</span>
-          <span className="shot-row__label">launch</span>
-        </span>
-      ) : (
-        <span className="shot-row__stat">
-          <span className="shot-row__value">{shot.club_speed_mph ? shot.club_speed_mph.toFixed(1) : '--'}</span>
-          <span className="shot-row__label">club</span>
-        </span>
-      )}
       <span className="shot-row__stat">
-        <span className="shot-row__value">{shot.smash_factor ? shot.smash_factor.toFixed(2) : '--'}</span>
-        <span className="shot-row__label">smash</span>
+        <span className="shot-row__value">{shot.club_speed_mph ? formatSpeed(shot.club_speed_mph, unitSystem, 1) : '—'}</span>
+        <span className="shot-row__label">club</span>
+      </span>
+      <span className="shot-row__stat">
+        <span className="shot-row__value">{shot.launch_angle_vertical !== null ? `${shot.launch_angle_vertical.toFixed(1)}°` : '—'}</span>
+        <span className="shot-row__label">launch</span>
+      </span>
+      <span className="shot-row__stat">
+        <span className="shot-row__value">{shot.spin_rpm !== null ? shot.spin_rpm.toLocaleString('en-US', { maximumFractionDigits: 0 }) : '—'}</span>
+        <span className="shot-row__label">spin</span>
       </span>
       <span className="shot-row__stat shot-row__stat--carry">
-        <span className="shot-row__value">{shot.estimated_carry_yards}</span>
-        <span className="shot-row__label">yds</span>
+        <span className="shot-row__value">{formatDistance(shot.estimated_carry_yards, unitSystem, 0)}</span>
+        <span className="shot-row__label">{distanceUnit}</span>
       </span>
     </div>
   );
@@ -49,10 +49,11 @@ const ShotRow = memo(function ShotRow({ shot, shotNumber }: ShotRowProps) {
 
 export function ShotList({ shots }: ShotListProps) {
   const [page, setPage] = useState(0);
+  const { unitSystem } = useUnitPreference();
+  const distanceUnit = getDistanceUnit(unitSystem);
 
   const totalPages = Math.ceil(shots.length / SHOTS_PER_PAGE);
 
-  // Memoize expensive calculations to avoid recomputing on every render
   const pageShots = useMemo(() => {
     const reversed = [...shots].reverse();
     const startIndex = page * SHOTS_PER_PAGE;
@@ -77,6 +78,8 @@ export function ShotList({ shots }: ShotListProps) {
             key={shot.timestamp}
             shot={shot}
             shotNumber={shots.length - startIndex - index}
+            unitSystem={unitSystem}
+            distanceUnit={distanceUnit}
           />
         ))}
       </div>

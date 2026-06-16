@@ -1,0 +1,51 @@
+name: Hardware Setup Help
+description: Get help with radar, wiring, or Raspberry Pi setup
+labels: ["hardware", "question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Need help getting your hardware working? Please describe your setup and what you've tried so far.
+
+        Before opening an issue, check:
+        - [Raspberry Pi setup guide](https://github.com/jewbetcha/openflight/blob/main/docs/raspberry-pi-setup.md)
+        - [Sound trigger wiring guide](https://github.com/jewbetcha/openflight/blob/main/docs/sound-trigger-wiring.md)
+        - [K-LD7 troubleshooting](https://github.com/jewbetcha/openflight/blob/main/docs/kld7-troubleshooting.md)
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What's happening?
+      description: Describe the issue you're running into.
+    validations:
+      required: true
+
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Hardware setup
+      description: Describe your complete hardware setup.
+      placeholder: |
+        - Platform: Raspberry Pi 4 (4GB) / Pi 5 / other
+        - Radar: OPS243-A
+        - K-LD7 radars: none / vertical only / vertical + horizontal
+        - Sound trigger: SEN-14262 with ___kΩ resistor at R17
+        - Power supply: official Pi PSU / other
+        - USB connections: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What have you tried?
+      description: List any troubleshooting steps you've already taken.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or error messages
+      description: Paste any relevant output from the server or scripts.
+      render: shell

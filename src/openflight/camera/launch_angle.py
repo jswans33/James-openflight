@@ -5,12 +5,13 @@ Calculates vertical and horizontal launch angles from detected
 ball positions across multiple frames.
 """
 
-from dataclasses import dataclass
-from typing import Optional, List, Tuple
 import math
+from dataclasses import dataclass
+from typing import List, Optional, Tuple
 
 try:
     import numpy as np
+
     NUMPY_AVAILABLE = True
 except ImportError:
     NUMPY_AVAILABLE = False
@@ -19,7 +20,8 @@ from .detector import DetectedBall
 
 # Optional import for TrackedBall/BallTrajectory integration
 try:
-    from .tracker import TrackedBall, BallTrajectory
+    from .tracker import BallTrajectory
+
     TRACKER_AVAILABLE = True
 except ImportError:
     TRACKER_AVAILABLE = False
@@ -28,12 +30,13 @@ except ImportError:
 @dataclass
 class CameraCalibration:
     """Camera calibration parameters for angle calculation."""
+
     # Sensor dimensions
-    sensor_width_mm: float = 6.287    # Pi HQ Camera IMX477 sensor
+    sensor_width_mm: float = 6.287  # Pi HQ Camera IMX477 sensor
     sensor_height_mm: float = 4.712
 
     # Lens focal length in mm
-    focal_length_mm: float = 6.0      # Default wide-angle lens
+    focal_length_mm: float = 6.0  # Default wide-angle lens
 
     # Image resolution
     image_width: int = 640
@@ -42,10 +45,10 @@ class CameraCalibration:
     # Camera position relative to ball (mm)
     # Behind and slightly above tee
     distance_to_ball_mm: float = 2000  # 2 meters behind
-    camera_height_mm: float = 300      # 30cm above ground (tee height ~50mm)
+    camera_height_mm: float = 300  # 30cm above ground (tee height ~50mm)
 
     # Golf ball diameter for size reference
-    ball_diameter_mm: float = 42.67    # Regulation golf ball
+    ball_diameter_mm: float = 42.67  # Regulation golf ball
 
     @property
     def pixels_per_mm_at_ball(self) -> float:
@@ -68,6 +71,7 @@ class CameraCalibration:
 @dataclass
 class LaunchAngles:
     """Calculated launch angles from trajectory."""
+
     # Vertical angle (positive = up)
     vertical_deg: float
 
@@ -147,7 +151,7 @@ class LaunchAngleCalculator:
             return None
 
         # Use only early frames (ball is clearest right after launch)
-        valid = valid[:self.max_frames]
+        valid = valid[: self.max_frames]
 
         # Extract positions
         indices = np.array([v[0] for v in valid])
@@ -180,14 +184,11 @@ class LaunchAngleCalculator:
             initial_x=x0,
             initial_y=y0,
             velocity_x=vx,
-            velocity_y=vy
+            velocity_y=vy,
         )
 
     def _fit_line(
-        self,
-        x: "np.ndarray",
-        y: "np.ndarray",
-        weights: "np.ndarray"
+        self, x: "np.ndarray", y: "np.ndarray", weights: "np.ndarray"
     ) -> Tuple[float, float]:
         """
         Fit weighted linear regression.
@@ -276,7 +277,7 @@ class LaunchAngleCalculator:
         vx: float,
         vy: float,
         x0: float,
-        y0: float
+        y0: float,
     ) -> float:
         """
         Calculate confidence in trajectory fit.
@@ -304,7 +305,7 @@ class LaunchAngleCalculator:
         self,
         detections: List[Optional[DetectedBall]],
         ball_speed_mph: float,
-        framerate: float = 120.0
+        framerate: float = 120.0,
     ) -> Optional[LaunchAngles]:
         """
         Calculate launch angles using radar-measured ball speed.
@@ -330,7 +331,7 @@ class LaunchAngleCalculator:
         if len(valid) < self.min_detections:
             return None
 
-        valid = valid[:self.max_frames]
+        valid = valid[: self.max_frames]
 
         indices = np.array([v[0] for v in valid])
         x_positions = np.array([v[1].x for v in valid])
@@ -361,7 +362,7 @@ class LaunchAngleCalculator:
             initial_x=x0,
             initial_y=y0,
             velocity_x=vx,
-            velocity_y=vy
+            velocity_y=vy,
         )
 
     def estimate_ball_distance(self, ball: DetectedBall) -> float:
@@ -388,9 +389,7 @@ class LaunchAngleCalculator:
 
         # Distance = (actual_size * focal_length * ppm_sensor) / apparent_size_px
         distance = (
-            self.calibration.ball_diameter_mm *
-            self.calibration.focal_length_mm *
-            ppm_sensor
+            self.calibration.ball_diameter_mm * self.calibration.focal_length_mm * ppm_sensor
         ) / ball_diameter_px
 
         return distance
@@ -399,7 +398,7 @@ class LaunchAngleCalculator:
         self,
         trajectory: "BallTrajectory",
         ball_speed_mph: Optional[float] = None,
-        framerate: float = 120.0
+        framerate: float = 120.0,
     ) -> Optional[LaunchAngles]:
         """
         Calculate launch angles from a tracked ball trajectory.
@@ -422,7 +421,7 @@ class LaunchAngleCalculator:
             return None
 
         # Convert TrackedBall positions to format expected by calculate methods
-        positions = trajectory.positions[:self.max_frames]
+        positions = trajectory.positions[: self.max_frames]
 
         indices = np.array([p.frame_number for p in positions])
         x_positions = np.array([p.x for p in positions])
@@ -465,5 +464,5 @@ class LaunchAngleCalculator:
             initial_x=x0,
             initial_y=y0,
             velocity_x=vx,
-            velocity_y=vy
+            velocity_y=vy,
         )
