@@ -18,16 +18,20 @@ SEN-14262 GND  → Raspberry Pi GND (shared with OPS243-A GND)
 
 ## Before You Wire: Solder R17
 
-The SEN-14262 is designed for 5V but runs at 3.3V in this setup. At 3.3V the preamp gain is too high and the GATE output can get stuck high. To fix this, solder a through-hole resistor into the **R17** position on the SEN-14262 board.
+**R17 is not a part already on the board — it's an empty pair of solder pads** (a footprint) that SparkFun left on the Sound Detector so you can tune the microphone preamp. The silkscreen prints `R17` next to the two empty holes, in the preamp section right beside the surface-mount resistor **R3**. You bridge those two pads with one through-hole resistor. Resistors aren't polarized, so orientation doesn't matter.
 
-R17 sits in parallel with the onboard 100kΩ surface-mount R3, reducing the preamp gain:
+**Why it's needed:** the SEN-14262 is factory-tuned for 5V. At the 3.3V used here the preamp gain is too high, so the GATE output saturates and gets stuck high (always "triggered"). Adding R17 lowers the gain so GATE fires only on a sharp, loud transient — a club striking the ball.
 
-| R17 Value | Effective Resistance | Gain Reduction |
-|-----------|---------------------|----------------|
-| 47kΩ | ~32kΩ | Moderate — try this first |
-| 33kΩ | ~25kΩ | More aggressive — for noisy environments |
+**How it works:** R17 sits electrically *in parallel* with the onboard 100kΩ R3. Two resistors in parallel combine to less than either one alone, and a smaller feedback resistor means lower amplifier gain:
 
-Start with 47kΩ. If the GATE LED still stays lit without sound, switch to a lower value.
+| R17 value | R17 ∥ R3 (100kΩ) | Effect | When to use |
+|-----------|------------------|--------|-------------|
+| 47kΩ | ~32kΩ | Moderate gain reduction | Start here |
+| 33kΩ | ~25kΩ | More reduction | Still too sensitive / noisy room |
+
+Start with 47kΩ. After wiring, clap near the sensor: the onboard GATE LED should flash briefly then go dark. If the LED stays lit constantly, the gain is still too high — switch to a lower value.
+
+> Board photos showing the exact R17 location are in SparkFun's [Sound Detector Hookup Guide](https://learn.sparkfun.com/tutorials/sound-detector-hookup-guide/all).
 
 ---
 
